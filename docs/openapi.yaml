@@ -1,0 +1,772 @@
+openapi: 3.1.0
+info:
+  title: MOHAR Partner API
+  version: 0.1.0-draft
+  summary: Shariah-compliant gold tokenization rail for Pakistani banks, neobanks and wallets.
+  description: |
+    The MOHAR Partner API lets a licensed partner institution offer fractional, fully allocated
+    gold to its own customers under its own brand. Partners integrate through the MOHAR SDK
+    (`@mohar/sdk`), which wraps this API. **Call it from your server only** — API keys must
+    never reach a browser or mobile app.
+
+    ## Responsibility split
+    The partner owns the customer: onboarding, KYC/CDD, AML/PEP screening, fiat collection and
+    payouts. MOHAR owns the gold: pricing, vault allocation, on-chain settlement and
+    Proof-of-Reserve. See `docs/contracts.md` for the on-chain side.
+
+    ## Conventions
+    - Amounts are **decimal strings**, never floats. Grams have up to 8 decimals
+      (`"0.60410000"`), PKR up to 2 (`"25000.00"`).
+    - IDs are prefixed: `wal_` wallet, `qt_` quote, `txn_` transaction, `evt_` webhook event.
+    - Money-moving `POST`s require an `Idempotency-Key` header. Replaying the same key with the
+      same body returns the original result; with a different body returns `409`.
+    - Settlement is asynchronous: `POST /v1/mints` returns `202` with a `pending` transaction.
+      Final status arrives by webhook (`transaction.confirmed` / `transaction.failed`) or by
+      polling `GET /v1/transactions/{id}`.
+
+    ## Status
+    Draft for FYP-2 build. Changes to this file go through a pull request first; the SDK types
+    are generated from it.
+  contact:
+    name: MOHAR FYP team (FAST-NUCES)
+servers:
+  - url: http://localhost:4000
+    description: Local development (API against Anvil)
+security:
+  - apiKey: []
+tags:
+  - name: System
+  - name: Pricing
+  - name: Wallets
+  - name: Quotes
+  - name: Settlement
+  - name: Transactions
+  - name: Reserve
+
+paths:
+  /v1/health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Liveness and chain connectivity
+      security: []
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+  /v1/price:
+    get:
+      tags: [Pricing]
+      operationId: getPrice
+      summary: Current gold price
+      description: Indicative spot price. To trade, create a quote.
+      responses:
+        "200":
+          description: Current price
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Price"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/wallets:
+    post:
+      tags: [Wallets]
+      operationId: registerWallet
+      summary: Register a customer wallet
+      description: |
+        Call after your own KYC has passed. MOHAR creates a custodial wallet, stores only a hash
+        of your KYC reference on-chain, and registers it in the WalletRegistry under your
+        partner id. `externalCustomerId` is unique per partner; registering it again returns
+        the existing wallet.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterWalletRequest"
+      responses:
+        "201":
+          description: Wallet registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+        "200":
+          description: Wallet already existed for this externalCustomerId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/wallets/{walletId}:
+    get:
+      tags: [Wallets]
+      operationId: getWallet
+      summary: Get a wallet
+      parameters:
+        - $ref: "#/components/parameters/WalletId"
+      responses:
+        "200":
+          description: The wallet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/wallets/{walletId}/balance:
+    get:
+      tags: [Wallets]
+      operationId: getBalance
+      summary: Gold balance and PKR value
+      parameters:
+        - $ref: "#/components/parameters/WalletId"
+      responses:
+        "200":
+          description: Balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Balance"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/quotes:
+    post:
+      tags: [Quotes]
+      operationId: createQuote
+      summary: Lock a price for 60 seconds
+      description: |
+        Provide exactly one of `amountPkr` or `grams`. The quote fixes the gold price shown to
+        the customer. Executing it (`/v1/mints` or `/v1/burns`) fails with `price_moved` if the
+        on-chain oracle has moved more than 0.50% since the quote, or `quote_expired` after
+        `expiresAt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteRequest"
+      responses:
+        "201":
+          description: Quote created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quote"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/mints:
+    post:
+      tags: [Settlement]
+      operationId: createMint
+      summary: Buy gold (execute a buy quote)
+      description: |
+        Call after you have collected the PKR from your customer. MOHAR obtains a vault
+        allocation and mints tokens on-chain in a single transaction.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteQuoteRequest"
+      responses:
+        "202":
+          description: Accepted; settlement in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/burns:
+    post:
+      tags: [Settlement]
+      operationId: createBurn
+      summary: Sell gold (execute a sell quote)
+      description: |
+        MOHAR de-allocates the gold and burns the tokens. When the transaction is confirmed,
+        pay `netAmountPkr` from the quote to your customer.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteQuoteRequest"
+      responses:
+        "202":
+          description: Accepted; settlement in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/transfers:
+    post:
+      tags: [Settlement]
+      operationId: createTransfer
+      summary: Send gold to another customer
+      description: Both wallets must be active. Either may belong to any partner.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferRequest"
+      responses:
+        "202":
+          description: Accepted; settlement in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/transactions:
+    get:
+      tags: [Transactions]
+      operationId: listTransactions
+      summary: List transactions
+      parameters:
+        - name: walletId
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/WalletIdValue"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque cursor from the previous page's `nextCursor`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of transactions, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/transactions/{transactionId}:
+    get:
+      tags: [Transactions]
+      operationId: getTransaction
+      summary: Get a transaction
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^txn_[A-Za-z0-9]+$"
+      responses:
+        "200":
+          description: The transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/reserve:
+    get:
+      tags: [Reserve]
+      operationId: getReserve
+      summary: Latest Proof-of-Reserve attestation
+      description: |
+        Public. Mirrors `ReserveRegistry.latest()` on-chain so anyone can check that every token
+        is backed. Clients that need trustless verification should read the contract directly.
+      security: []
+      responses:
+        "200":
+          description: Latest attestation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reserve"
+
+webhooks:
+  transaction.confirmed:
+    post:
+      operationId: onTransactionConfirmed
+      summary: A mint, burn or transfer was confirmed on-chain
+      description: |
+        Signed with your webhook secret. Header
+        `Mohar-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">`.
+        Reject events whose timestamp is older than 5 minutes. Use the SDK's
+        `verifyWebhookSignature` helper.
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionEvent"
+      responses:
+        "200":
+          description: Acknowledge. Non-2xx responses are retried with backoff.
+  transaction.failed:
+    post:
+      operationId: onTransactionFailed
+      summary: A mint, burn or transfer failed and nothing moved on-chain
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionEvent"
+      responses:
+        "200":
+          description: Acknowledge.
+
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: "Partner API key, e.g. `Authorization: Bearer mk_test_...`. Server-side only."
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique per logical operation (a UUID is fine). Kept for 24 hours.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+    WalletId:
+      name: walletId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/WalletIdValue"
+    WebhookSignature:
+      name: Mohar-Signature
+      in: header
+      required: true
+      schema:
+        type: string
+        example: t=1759262400,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found (or not owned by this partner)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: |
+        Business-rule conflict — e.g. `quote_expired`, `price_moved`, `wallet_frozen`,
+        `minting_paused`, `insufficient_balance`, `idempotency_conflict`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Grams:
+      type: string
+      description: Grams of 24K gold, up to 8 decimals.
+      pattern: "^\\d+(\\.\\d{1,8})?$"
+      examples: ["0.60410000"]
+    Pkr:
+      type: string
+      description: Pakistani rupees, up to 2 decimals.
+      pattern: "^\\d+(\\.\\d{1,2})?$"
+      examples: ["25000.00"]
+    Timestamp:
+      type: string
+      format: date-time
+    WalletIdValue:
+      type: string
+      pattern: "^wal_[A-Za-z0-9]+$"
+      examples: ["wal_7Hq2Lx9P"]
+    Address:
+      type: string
+      pattern: "^0x[a-fA-F0-9]{40}$"
+    TxHash:
+      type: string
+      pattern: "^0x[a-fA-F0-9]{64}$"
+
+    Health:
+      type: object
+      required: [status, chainId, blockNumber]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        chainId:
+          type: integer
+          examples: [80002]
+        blockNumber:
+          type: integer
+
+    Price:
+      type: object
+      required: [xauUsd, usdPkr, pricePerGramPkr, asOf, source]
+      properties:
+        xauUsd:
+          type: string
+          description: USD per troy ounce
+          examples: ["4616.00"]
+        usdPkr:
+          type: string
+          description: PKR per USD
+          examples: ["279.05"]
+        pricePerGramPkr:
+          $ref: "#/components/schemas/Pkr"
+        asOf:
+          $ref: "#/components/schemas/Timestamp"
+        source:
+          type: string
+          enum: [chainlink, mock]
+          description: Which XAU/USD feed the price came from.
+
+    RegisterWalletRequest:
+      type: object
+      required: [externalCustomerId, kyc]
+      properties:
+        externalCustomerId:
+          type: string
+          description: Your own customer id. Never send CNIC numbers or names.
+          maxLength: 128
+        kyc:
+          type: object
+          required: [reference, level, verifiedAt]
+          properties:
+            reference:
+              type: string
+              description: Your KYC record reference. MOHAR stores only its keccak256 hash.
+              maxLength: 256
+            level:
+              type: string
+              enum: [asaan, standard, enhanced]
+              description: KYC tier from your onboarding (Asaan = simplified SBP tier).
+            verifiedAt:
+              $ref: "#/components/schemas/Timestamp"
+
+    Wallet:
+      type: object
+      required: [id, externalCustomerId, address, status, createdAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/WalletIdValue"
+        externalCustomerId:
+          type: string
+        address:
+          $ref: "#/components/schemas/Address"
+        status:
+          type: string
+          enum: [active, frozen]
+        createdAt:
+          $ref: "#/components/schemas/Timestamp"
+
+    Balance:
+      type: object
+      required: [walletId, grams, valuePkr, price]
+      properties:
+        walletId:
+          $ref: "#/components/schemas/WalletIdValue"
+        grams:
+          $ref: "#/components/schemas/Grams"
+        valuePkr:
+          $ref: "#/components/schemas/Pkr"
+        price:
+          $ref: "#/components/schemas/Price"
+
+    QuoteRequest:
+      type: object
+      required: [walletId, side]
+      description: Provide exactly one of `amountPkr` or `grams`.
+      properties:
+        walletId:
+          $ref: "#/components/schemas/WalletIdValue"
+        side:
+          type: string
+          enum: [buy, sell]
+        amountPkr:
+          $ref: "#/components/schemas/Pkr"
+        grams:
+          $ref: "#/components/schemas/Grams"
+
+    Fees:
+      type: object
+      required: [platformFeePkr, fxMarginPkr]
+      description: |
+        Draft — fee policy to be confirmed against FYP-1 §2.2.6. Platform fee (0.50%) is
+        charged to the partner; the FX margin (capped at 0.25%) is included in the customer
+        price.
+      properties:
+        platformFeePkr:
+          $ref: "#/components/schemas/Pkr"
+        fxMarginPkr:
+          $ref: "#/components/schemas/Pkr"
+
+    Quote:
+      type: object
+      required:
+        [id, walletId, side, grams, grossAmountPkr, netAmountPkr, fees, price, expiresAt, createdAt]
+      properties:
+        id:
+          type: string
+          pattern: "^qt_[A-Za-z0-9]+$"
+        walletId:
+          $ref: "#/components/schemas/WalletIdValue"
+        side:
+          type: string
+          enum: [buy, sell]
+        grams:
+          $ref: "#/components/schemas/Grams"
+        grossAmountPkr:
+          $ref: "#/components/schemas/Pkr"
+        netAmountPkr:
+          $ref: "#/components/schemas/Pkr"
+          description: What the customer pays (buy) or receives (sell).
+        fees:
+          $ref: "#/components/schemas/Fees"
+        price:
+          $ref: "#/components/schemas/Price"
+        expiresAt:
+          $ref: "#/components/schemas/Timestamp"
+        createdAt:
+          $ref: "#/components/schemas/Timestamp"
+
+    ExecuteQuoteRequest:
+      type: object
+      required: [quoteId]
+      properties:
+        quoteId:
+          type: string
+          pattern: "^qt_[A-Za-z0-9]+$"
+
+    TransferRequest:
+      type: object
+      required: [fromWalletId, toWalletId, grams]
+      properties:
+        fromWalletId:
+          $ref: "#/components/schemas/WalletIdValue"
+        toWalletId:
+          $ref: "#/components/schemas/WalletIdValue"
+        grams:
+          $ref: "#/components/schemas/Grams"
+
+    Transaction:
+      type: object
+      required: [id, type, status, walletId, grams, createdAt]
+      properties:
+        id:
+          type: string
+          pattern: "^txn_[A-Za-z0-9]+$"
+        type:
+          type: string
+          enum: [mint, burn, transfer]
+        status:
+          type: string
+          enum: [pending, submitted, confirmed, failed]
+          description: |
+            pending — accepted, not yet sent; submitted — on-chain tx sent;
+            confirmed — included in a block; failed — nothing moved.
+        walletId:
+          $ref: "#/components/schemas/WalletIdValue"
+        counterpartyWalletId:
+          $ref: "#/components/schemas/WalletIdValue"
+          description: Recipient, for transfers.
+        grams:
+          $ref: "#/components/schemas/Grams"
+        quoteId:
+          type: string
+          description: For mints and burns.
+        netAmountPkr:
+          $ref: "#/components/schemas/Pkr"
+        txHash:
+          $ref: "#/components/schemas/TxHash"
+        blockNumber:
+          type: integer
+        explorerUrl:
+          type: string
+          format: uri
+        failureCode:
+          type: string
+          description: Same codes as `Error.code`, when status is `failed`.
+        createdAt:
+          $ref: "#/components/schemas/Timestamp"
+        confirmedAt:
+          $ref: "#/components/schemas/Timestamp"
+
+    TransactionList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+        nextCursor:
+          type: string
+
+    Reserve:
+      type: object
+      required:
+        [
+          totalGramsInVault,
+          tokenSupplyGrams,
+          differenceGrams,
+          fullyBacked,
+          allocationsRoot,
+          asOf,
+          nonce,
+          contractAddress,
+        ]
+      properties:
+        totalGramsInVault:
+          $ref: "#/components/schemas/Grams"
+        tokenSupplyGrams:
+          $ref: "#/components/schemas/Grams"
+        differenceGrams:
+          type: string
+          description: Vault grams minus token supply. Should be ≥ 0.
+        fullyBacked:
+          type: boolean
+        allocationsRoot:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{64}$"
+        asOf:
+          $ref: "#/components/schemas/Timestamp"
+        publishedAt:
+          $ref: "#/components/schemas/Timestamp"
+        nonce:
+          type: integer
+        attestor:
+          $ref: "#/components/schemas/Address"
+        contractAddress:
+          $ref: "#/components/schemas/Address"
+        explorerUrl:
+          type: string
+          format: uri
+
+    TransactionEvent:
+      type: object
+      required: [id, type, createdAt, data]
+      properties:
+        id:
+          type: string
+          pattern: "^evt_[A-Za-z0-9]+$"
+        type:
+          type: string
+          enum: [transaction.confirmed, transaction.failed]
+        createdAt:
+          $ref: "#/components/schemas/Timestamp"
+        data:
+          $ref: "#/components/schemas/Transaction"
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - invalid_request
+                - unauthorized
+                - not_found
+                - quote_expired
+                - price_moved
+                - wallet_frozen
+                - wallet_not_registered
+                - minting_paused
+                - insufficient_balance
+                - idempotency_conflict
+                - not_implemented
+                - internal_error
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true

@@ -1,0 +1,17 @@
+# Reviews are requested automatically from the owners below.
+# Later rules win. Replace the placeholders with teammates' GitHub usernames
+# (uncomment each line once the username is filled in).
+
+*                     @goesbyabdulwasay
+
+# Smart contracts, API and SDK — technical lead
+# /contracts/         @ALI_GITHUB_USERNAME
+# /api/               @ALI_GITHUB_USERNAME
+# /sdk/               @ALI_GITHUB_USERNAME
+
+# Demo bank UI — UI/UX lead (Ali reviews the SDK integration too)
+# /demo-bank/         @AROOB_GITHUB_USERNAME @ALI_GITHUB_USERNAME
+
+# Specs and thesis material — project manager
+/docs/                @goesbyabdulwasay
+/CLAUDE.md            @goesbyabdulwasay

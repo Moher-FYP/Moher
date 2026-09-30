@@ -1,0 +1,27 @@
+{
+  "name": "moher",
+  "private": true,
+  "description": "MOHAR \u2014 Shariah-compliant gold tokenization infrastructure (FAST-NUCES FYP)",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "dev": "pnpm -r --parallel --if-present dev",
+    "lint": "pnpm -r --if-present lint",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "contracts:build": "cd contracts && forge build",
+    "contracts:test": "cd contracts && forge test -vv",
+    "chain": "anvil",
+    "spec:lint": "redocly lint docs/openapi.yaml"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^2.57.0",
+    "prettier": "^3.9.9",
+    "typescript": "^5.9.3"
+  }
+}

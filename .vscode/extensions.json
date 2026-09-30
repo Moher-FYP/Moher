@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "NomicFoundation.hardhat-solidity",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "Prisma.prisma",
+    "bradlc.vscode-tailwindcss",
+    "rangav.vscode-thunder-client",
+    "42Crunch.vscode-openapi",
+    "ms-vscode-remote.remote-wsl",
+    "MS-vsliveshare.vsliveshare"
+  ]
+}

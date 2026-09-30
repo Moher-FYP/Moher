@@ -1,0 +1,11 @@
+pnpm-lock.yaml
+contracts/lib/
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+**/dist/
+**/.next/
+# Written by `next dev`; reformatting it just causes churn.
+demo-bank/AGENTS.md
+demo-bank/CLAUDE.md
+demo-bank/next-env.d.ts
