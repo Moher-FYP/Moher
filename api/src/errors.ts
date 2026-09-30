@@ -15,6 +15,19 @@ export type ErrorCode =
   | "not_implemented"
   | "internal_error";
 
+/** Throw from a route handler; the error middleware turns it into the spec's error shape. */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: ErrorCode,
+    message: string,
+    readonly details?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export function sendError(
   res: Response,
   status: number,

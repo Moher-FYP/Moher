@@ -23,7 +23,7 @@ Demo bank web app (Next.js)          ← stands in for a partner bank
 | Folder       | What                                              | Docs                  |
 | ------------ | ------------------------------------------------- | --------------------- |
 | `contracts/` | Solidity 0.8.24, OpenZeppelin 5, Foundry          | `docs/contracts.md`   |
-| `api/`       | Partner API, mock vault, relayer                  | `docs/openapi.yaml`   |
+| `api/`       | Partner API, mock vault, relayer                  | `docs/api.md`         |
 | `sdk/`       | `@mohar/sdk`, typed from the OpenAPI spec         | `sdk/src/client.ts`   |
 | `demo-bank/` | Mock partner bank; the customer-facing demo       | `demo-bank/README.md` |
 | `docs/`      | Specs — the single source of truth for interfaces |                       |
@@ -49,26 +49,27 @@ best there.
 
 ## Run locally
 
-Four terminals:
+Four terminals, in this order:
 
 ```bash
-pnpm chain                          # 1. local blockchain (Anvil) on :8545
-pnpm --filter @mohar/api dev        # 2. API on :4000
-pnpm --filter @mohar/sdk dev        # 3. SDK rebuilds on change
-pnpm --filter @mohar/demo-bank dev  # 4. demo bank on :3000
+pnpm chain                                   # 1. local blockchain (Anvil) on :8545
+pnpm contracts:deploy:local                  # 2a. deploy contracts (after EVERY chain restart)
+pnpm --filter @mohar/sdk build && pnpm --filter @mohar/api dev   # 2b. API on :4000
+pnpm --filter @mohar/sdk dev                 # 3. SDK rebuilds on change
+pnpm --filter @mohar/demo-bank dev           # 4. demo bank on :3000
 ```
 
 Open http://localhost:3000 — the integration card should say **Connected**.
 
-To put the contracts on your local chain, run `pnpm contracts:deploy:local` after `pnpm chain`
-starts (repeat it whenever you restart the chain). Addresses land in
-`contracts/deployments/31337.json`.
+To buy, sell and check the reserve by hand, follow the curl walkthrough in
+[`docs/api.md`](docs/api.md).
 
 ## Everyday commands
 
 ```bash
 pnpm contracts:test   # Foundry tests (incl. fuzzing)
 pnpm test             # API + SDK unit tests
+pnpm test:e2e         # full buy/sell/transfer flow on a throwaway local chain
 pnpm typecheck
 pnpm lint
 pnpm format           # fix formatting

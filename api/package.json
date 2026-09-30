@@ -12,9 +12,13 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "abi": "node scripts/extract-abis.mjs"
   },
   "dependencies": {
+    "@mohar/sdk": "workspace:*",
+    "@openzeppelin/merkle-tree": "^1.0.8",
     "dotenv": "^18.0.5",
     "express": "^5.2.1",
     "viem": "^2.57.1",

@@ -26,6 +26,11 @@ Aysha Afzal (market research).
 
 Sources of truth: `docs/openapi.yaml` (API), `docs/contracts.md` +
 `contracts/src/interfaces/` (on-chain). If code and spec disagree, fix both in one PR.
+`docs/api.md` explains the API internals (queue, vault book, store, webhooks).
+
+API rules: every on-chain write goes through the single `SerialQueue` (one relayer nonce);
+the vault counts an allocation when it signs and releases a de-allocation only after the burn
+confirms; errors from the chain are mapped to spec codes in `src/chain/errors.ts`.
 
 ## Units — get these right
 
@@ -42,6 +47,8 @@ pnpm install                         # from repo root
 pnpm contracts:test                  # forge test (run inside contracts/ with --offline if no network)
 pnpm contracts:deploy:local          # deploy to Anvil; writes contracts/deployments/31337.json
 pnpm test | typecheck | lint | build # all TS packages
+pnpm test:e2e                        # Anvil + deploy + API + SDK full flow (needs Foundry)
+pnpm --filter @mohar/api abi         # after contract changes (CI checks abis.ts is current)
 pnpm spec:lint                       # redocly lint docs/openapi.yaml
 pnpm --filter @mohar/sdk generate    # after ANY change to docs/openapi.yaml
 pnpm format                          # prettier; `forge fmt` for Solidity
