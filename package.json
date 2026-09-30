@@ -17,7 +17,8 @@
     "contracts:build": "cd contracts && forge build",
     "contracts:test": "cd contracts && forge test -vv",
     "chain": "anvil",
-    "spec:lint": "redocly lint docs/openapi.yaml"
+    "spec:lint": "redocly lint docs/openapi.yaml",
+    "contracts:deploy:local": "cd contracts && forge script script/Deploy.s.sol --rpc-url local --broadcast"
   },
   "devDependencies": {
     "@redocly/cli": "^2.57.0",

@@ -40,6 +40,7 @@ Sources of truth: `docs/openapi.yaml` (API), `docs/contracts.md` +
 ```bash
 pnpm install                         # from repo root
 pnpm contracts:test                  # forge test (run inside contracts/ with --offline if no network)
+pnpm contracts:deploy:local          # deploy to Anvil; writes contracts/deployments/31337.json
 pnpm test | typecheck | lint | build # all TS packages
 pnpm spec:lint                       # redocly lint docs/openapi.yaml
 pnpm --filter @mohar/sdk generate    # after ANY change to docs/openapi.yaml

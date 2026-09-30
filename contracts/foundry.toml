@@ -9,10 +9,18 @@ solc_version = "0.8.24"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
+# Deploy.s.sol writes deployments/<chainId>.json for the API to read.
+fs_permissions = [{ access = "read-write", path = "./deployments" }]
 remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
     "forge-std/=lib/forge-std/src/",
 ]
+
+[lint]
+# Inline-assembly keccak is a micro gas optimisation; readability matters more for the FYP.
+exclude_lints = ["asm-keccak256"]
+# Tests cast literals and ignore ERC-20 return values on purpose.
+ignore = ["test/**/*.sol"]
 
 [fuzz]
 # H2 (slippage-elimination) is validated with 1,000 randomized mint/burn runs.

@@ -72,6 +72,10 @@ interface IMoharToken is IERC20 {
     // ---------------------------------------------------------------- errors
 
     error ZeroAmount();
+    error ZeroAddress();
+    error InvalidPriceFeed(address feed);
+    error InvalidStaleness(uint256 maxStaleness);
+    error InvalidMaxDeviation(uint16 maxDeviationBps);
     error WalletNotActive(address wallet);
     error InvalidVaultSignature();
     error AttestationExpired(uint256 deadline);
