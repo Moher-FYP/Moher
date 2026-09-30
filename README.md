@@ -60,6 +60,10 @@ pnpm --filter @mohar/demo-bank dev  # 4. demo bank on :3000
 
 Open http://localhost:3000 — the integration card should say **Connected**.
 
+To put the contracts on your local chain, run `pnpm contracts:deploy:local` after `pnpm chain`
+starts (repeat it whenever you restart the chain). Addresses land in
+`contracts/deployments/31337.json`.
+
 ## Everyday commands
 
 ```bash

@@ -7,8 +7,13 @@ pragma solidity ^0.8.24;
 ///         Anyone (partner, regulator, customer) can read the latest attestation and verify a
 ///         single allocation against the root without seeing the full allocation database.
 ///
-///         If attested grams fall below token.totalSupply(), the registry pauses minting on the
-///         token (burns stay open). Unpausing is a manual admin action after reconciliation.
+///         If attested grams fall below token.totalSupply() at publish time, the registry pauses
+///         minting on the token (burns stay open). Unpausing is a manual admin action after
+///         reconciliation.
+///
+///         Vault accounting rule (so honest attestations never show a false shortfall): the vault
+///         counts an allocation from the moment it signs it, and releases a de-allocation only
+///         after the matching burn is confirmed on-chain.
 ///
 ///         Merkle leaves follow the OpenZeppelin merkle-tree JS library "standard" encoding:
 ///         leaf = keccak256(bytes.concat(keccak256(abi.encode(allocationRef, wallet, grams))))
@@ -48,6 +53,7 @@ interface IReserveRegistry {
     error NonceNotIncreasing(uint256 lastNonce, uint256 nonce);
     error SnapshotOutOfOrder(uint64 lastAsOf, uint64 asOf);
     error NoAttestation();
+    error ZeroAddress();
 
     // ---------------------------------------------------------------- publishing
 
@@ -69,7 +75,8 @@ interface IReserveRegistry {
 
     function latest() external view returns (PublishedAttestation memory);
 
-    /// @return true if the latest attested grams cover the current token supply
+    /// @return true if the latest attestation covered the token supply at the moment it was
+    ///         published. False if nothing has been published yet.
     function isFullyBacked() external view returns (bool);
 
     /// @notice Verifies one allocation against the latest published Merkle root.

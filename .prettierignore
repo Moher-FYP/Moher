@@ -3,6 +3,7 @@ contracts/lib/
 contracts/out/
 contracts/cache/
 contracts/broadcast/
+contracts/deployments/
 **/dist/
 **/.next/
 # Written by `next dev`; reformatting it just causes churn.

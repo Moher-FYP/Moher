@@ -1,9 +1,8 @@
 # Contracts specification
 
-Status: **draft interfaces** (scaffold PR). Implementations follow in the next PRs and must
-match these interfaces. Source of truth: `contracts/src/interfaces/` and
-`contracts/src/libraries/MoharTypes.sol`. If this document and the code disagree, fix one of
-them in the same PR.
+Status: **implemented and tested** (`contracts/src/`, 69 Foundry tests including the H2 fuzz
+suite). Source of truth: `contracts/src/interfaces/` and `contracts/src/libraries/MoharTypes.sol`.
+If this document and the code disagree, fix one of them in the same PR.
 
 ## Contracts
 
@@ -66,16 +65,19 @@ KYC/AML of customers is the partner institution's responsibility. The registry s
    locks the quote for 60 s.
 2. Mock vault signs an EIP-712 `Allocation{wallet, grams, allocationRef, deadline}`.
 3. Relayer calls `mint(allocation, quotedPrice, vaultSignature)`.
-4. In the same transaction the token:
+4. In the same transaction the token, in this order:
    - checks `SETTLEMENT_ROLE`, minting not paused, `grams > 0`;
-   - checks wallet is active in the registry;
    - checks `block.timestamp <= deadline` and `allocationRef` not used before;
    - recovers the EIP-712 signer and requires it to equal `vaultSigner()`;
    - reads the oracle; reverts on `answer <= 0` or `updatedAt` older than `maxStaleness`;
    - reverts if `deviationBps(quotedPrice, oraclePrice) > maxDeviationBps` (gharar control,
      FYP-1 §3.4.4);
-   - marks `allocationRef` used, mints, emits `Minted(wallet, grams, oraclePrice, quotedPrice,
-allocationRef)`.
+   - marks `allocationRef` used and mints; `_update` requires the wallet to be active in the
+     registry;
+   - emits `Minted(wallet, grams, oraclePrice, quotedPrice, allocationRef)`.
+
+If any check fails the whole transaction reverts: no tokens move and the vault reference is not
+consumed, so the API can re-quote and retry with the same allocation.
 
 Burn is identical with `Deallocation` and `Burned`. Constructive possession (qabd) happens in
 one block: vault receipt verified and tokens issued atomically (FYP-1 §3.4.1).
@@ -103,15 +105,73 @@ vice versa. The API signer (viem `signTypedData`) must use these exact strings; 
 - Vault signs `ReserveAttestation{totalGrams, allocationsRoot, asOf, nonce}`; relayer calls
   `publish`. Nonce strictly increasing; `asOf` never goes backwards.
 - On publish, if `totalGrams < token.totalSupply()` the registry emits `ReserveShortfall` and
-  pauses minting on the token. Unpausing is a manual admin action after reconciliation.
+  pauses minting on the token. Burns stay open. Unpausing is a manual admin action after
+  reconciliation — a later healthy attestation does **not** auto-unpause.
+- `isFullyBacked()` answers "did the latest attestation cover the supply at the moment it was
+  published?" Mints after that moment are covered by their own vault signatures and show up in
+  the next attestation.
+- **Vault accounting rule** (for the mock vault in the API): count an allocation from the moment
+  you sign it; release a de-allocation only after the burn is confirmed. Then an honest
+  attestation can never show a false shortfall.
 - Public views: `latest()`, `isFullyBacked()`, `verifyAllocation(ref, wallet, grams, proof)`.
   The demo's "Verify backing" screen reads these directly from the chain.
 
-## Open questions (resolve before implementation)
+## Tests and the H2 hypothesis
 
-- [ ] Is the Chainlink XAU/USD feed deployed on Amoy? If not, deploy `MockV3Aggregator` and run
-      a price-updater script. Document the choice in the thesis.
-- [ ] `maxStaleness`: Chainlink XAU/USD heartbeat on Polygon is typically long; pick a value
-      that suits the mock updater (proposal: 1 hour on testnet).
-- [ ] Should reserve-triggered pauses auto-unpause when a later attestation is sufficient?
-      Current proposal: no, manual unpause only.
+```bash
+pnpm contracts:test                                            # all 69 tests
+cd contracts && forge test --match-contract H2SlippageTest -vv # the H2 evidence only
+```
+
+`test/H2Slippage.t.sol` is the Chapter 5 evidence for **H2 (slippage elimination)**. Each fuzz
+test runs 1,000 randomized trades (up to one tonne) while the oracle moves anywhere within ±5%
+of the quote, and asserts:
+
+- **P1** — every executed mint/burn records an execution price exactly equal to the oracle
+  price in that block (zero deviation);
+- **P2** — every trade whose quote-to-oracle move exceeds 0.50% reverts and moves nothing.
+
+A third fuzz test checks that total supply always equals vault-signed allocations minus
+de-allocations. Other suites cover access control, signature forgery and tampering, replay
+(same ref, other chain, allocation-as-deallocation, token-domain signature on the reserve),
+expiry, stale and invalid oracle answers, frozen wallets, deactivated partners, pause
+behaviour, key rotation and Merkle proofs.
+
+## Deployment
+
+`contracts/script/Deploy.s.sol` deploys everything, grants the roles in the table above,
+registers the `demo-bank` partner, and writes addresses to `contracts/deployments/<chainId>.json`,
+which the API reads.
+
+```bash
+pnpm chain                     # terminal 1
+pnpm contracts:deploy:local    # terminal 2 — no .env needed on Anvil
+```
+
+On Anvil the script uses account #0 as admin, #1 as relayer and #2 as vault signer. Anvil
+restarts from an empty chain, so re-run the deploy after every `pnpm chain`; addresses are
+deterministic and match the committed `deployments/31337.json`.
+
+For Amoy, fill in `contracts/.env` and run
+`source .env && forge script script/Deploy.s.sol --rpc-url amoy --broadcast`. The script refuses
+to use the public Anvil key on any other network.
+
+Changing the mock price for a demo (e.g. to show a trade rejected for moving > 0.50%):
+
+```bash
+cast send <xauUsdFeed> "updateAnswer(int256)" 470000000000 --rpc-url http://127.0.0.1:8545 --private-key <anvil key #0>
+```
+
+## Decisions
+
+- **Oracle staleness:** 1 hour by default (`MAX_STALENESS_SECONDS`). Chainlink's XAU/USD
+  heartbeat is longer on some networks; raise it on Amoy if using the real feed.
+- **Auto-unpause after a shortfall:** no. Resuming issuance after a reserve problem is a
+  governance decision.
+- **Max deviation:** 50 bps default, admin-configurable within 1–1,000 bps.
+
+## Open questions
+
+- [ ] Is the Chainlink XAU/USD feed deployed on Polygon Amoy? If yes, set
+      `XAU_USD_FEED_ADDRESS` before deploying; if not, the script deploys the mock and the
+      thesis should say so.
