@@ -1,0 +1,9 @@
+extends:
+  - recommended
+rules:
+  # Private FYP API: no licence, localhost server, tags are self-explanatory.
+  info-license: off
+  no-server-example.com: off
+  tag-description: off
+  # /v1/health and /v1/reserve are public and cannot fail with 4xx.
+  operation-4xx-response: off

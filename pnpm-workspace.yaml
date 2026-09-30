@@ -1,0 +1,13 @@
+packages:
+  - api
+  - sdk
+  - demo-bank
+
+# Native build scripts pnpm is allowed to skip (Next.js image optimisation / eslint resolver).
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver
+
+# esbuild (used by tsx and vitest) needs its postinstall to fetch the right binary.
+onlyBuiltDependencies:
+  - esbuild
