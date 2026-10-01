@@ -33,7 +33,7 @@ const ConfigSchema = z.object({
   /** Comma-separated `apiKey=partnerSlug` pairs. */
   PARTNER_API_KEYS: z.string().default("mk_test_local=demo-bank"),
   /** Comma-separated `partnerSlug=https://...` pairs. */
-  PARTNER_WEBHOOK_URLS: z.string().default(""),
+  PARTNER_WEBHOOK_URLS: z.string().default("demo-bank=http://localhost:3000/api/mohar/webhooks"),
   WEBHOOK_SECRET: z.string().min(8).default("whsec_local_dev_only"),
 
   /** Where the JSON store lives. ":memory:" keeps everything in memory (tests). */

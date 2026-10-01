@@ -59,7 +59,9 @@ pnpm --filter @mohar/sdk dev                 # 3. SDK rebuilds on change
 pnpm --filter @mohar/demo-bank dev           # 4. demo bank on :3000
 ```
 
-Open http://localhost:3000 — the integration card should say **Connected**.
+Open http://localhost:3000, sign in as Hassan, and buy some gold. The panel on the right shows
+every call the bank makes to MOHAR. `demo-bank/README.md` explains the screens and the
+slippage demo.
 
 To buy, sell and check the reserve by hand, follow the curl walkthrough in
 [`docs/api.md`](docs/api.md).
