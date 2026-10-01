@@ -34,9 +34,11 @@ library MoharTypes {
         "ReserveAttestation(uint256 totalGrams,bytes32 allocationsRoot,uint64 asOf,uint256 nonce)"
     );
 
-    /// @notice Absolute deviation between two prices in basis points of `quoted`.
+    /// @notice Absolute deviation between two prices in basis points of `quoted`, rounded UP, so
+    ///         `deviationBps <= 50` means the exact move is at most 0.50% (rounding down would let
+    ///         moves up to 0.5099% through — found by the H2 experiment).
     function deviationBps(uint256 quoted, uint256 observed) internal pure returns (uint256) {
         uint256 diff = quoted > observed ? quoted - observed : observed - quoted;
-        return (diff * BPS_DENOMINATOR) / quoted;
+        return (diff * BPS_DENOMINATOR + quoted - 1) / quoted;
     }
 }
