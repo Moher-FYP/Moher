@@ -17,6 +17,7 @@ export type Transaction = Schemas["Transaction"];
 export type TransactionStatus = Transaction["status"];
 export type TransactionList = Schemas["TransactionList"];
 export type Reserve = Schemas["Reserve"];
+export type ReserveProof = Schemas["ReserveProof"];
 export type TransactionEvent = Schemas["TransactionEvent"];
 export type ApiErrorBody = Schemas["Error"];
 export type ErrorCode = ApiErrorBody["error"]["code"];

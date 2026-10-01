@@ -98,6 +98,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/wallets/{walletId}/reserve-proof": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Prove this wallet's gold is in the reserve
+     * @description Merkle proof that the wallet's holding is a leaf of the latest on-chain Proof-of-Reserve
+     *     attestation. `verifiedOnChain` is the result of calling
+     *     `ReserveRegistry.verifyAllocation` with this proof — anyone can repeat that call.
+     *     Powers the demo's "Verify backing" screen.
+     */
+    get: operations["getReserveProof"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/quotes": {
     parameters: {
       query?: never;
@@ -362,9 +385,10 @@ export interface components {
       grams?: components["schemas"]["Grams"];
     };
     /**
-     * @description Draft — fee policy to be confirmed against FYP-1 §2.2.6. Platform fee (0.50%) is
-     *     charged to the partner; the FX margin (capped at 0.25%) is included in the customer
-     *     price.
+     * @description FYP-1 §2.2.6. The platform fee (default 0.50% of the gold value, ujrah) is billed to the
+     *     partner and does not change what the customer pays. The FX margin (capped at 0.25%) is
+     *     built into the customer's price: on a buy the customer pays gold value + margin, on a
+     *     sell they receive gold value − margin. Rounding always favours the reserve.
      */
     Fees: {
       platformFeePkr: components["schemas"]["Pkr"];
@@ -436,6 +460,16 @@ export interface components {
       contractAddress: components["schemas"]["Address"];
       /** Format: uri */
       explorerUrl?: string;
+    };
+    ReserveProof: {
+      walletId: components["schemas"]["WalletIdValue"];
+      address: components["schemas"]["Address"];
+      /** @description Leaf id — keccak256(abi.encode("MOHAR holding", address)). */
+      allocationRef: string;
+      grams: components["schemas"]["Grams"];
+      proof: string[];
+      verifiedOnChain: boolean;
+      contractAddress: components["schemas"]["Address"];
     };
     TransactionEvent: {
       id: string;
@@ -641,6 +675,30 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Balance"];
+        };
+      };
+      401: components["responses"]["Unauthorized"];
+      404: components["responses"]["NotFound"];
+    };
+  };
+  getReserveProof: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        walletId: components["parameters"]["WalletId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Proof and on-chain verification result */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReserveProof"];
         };
       };
       401: components["responses"]["Unauthorized"];

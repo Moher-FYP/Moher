@@ -10,3 +10,4 @@ contracts/deployments/
 demo-bank/AGENTS.md
 demo-bank/CLAUDE.md
 demo-bank/next-env.d.ts
+api/src/chain/abis.ts

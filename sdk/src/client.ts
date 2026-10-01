@@ -10,6 +10,7 @@ import type {
   QuoteRequest,
   RegisterWalletRequest,
   Reserve,
+  ReserveProof,
   Transaction,
   TransactionList,
   TransferRequest,
@@ -187,6 +188,11 @@ export class MoharClient {
   /** Latest Proof-of-Reserve attestation (public endpoint). */
   getReserve(): Promise<Reserve> {
     return this.request("GET", "/v1/reserve", { auth: false });
+  }
+
+  /** Merkle proof that a wallet's gold is in the latest reserve attestation, checked on-chain. */
+  getReserveProof(walletId: string): Promise<ReserveProof> {
+    return this.request("GET", `/v1/wallets/${encodeURIComponent(walletId)}/reserve-proof`);
   }
 
   // ------------------------------------------------------------------ internals

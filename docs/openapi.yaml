@@ -148,6 +148,30 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /v1/wallets/{walletId}/reserve-proof:
+    get:
+      tags: [Reserve]
+      operationId: getReserveProof
+      summary: Prove this wallet's gold is in the reserve
+      description: |
+        Merkle proof that the wallet's holding is a leaf of the latest on-chain Proof-of-Reserve
+        attestation. `verifiedOnChain` is the result of calling
+        `ReserveRegistry.verifyAllocation` with this proof — anyone can repeat that call.
+        Powers the demo's "Verify backing" screen.
+      parameters:
+        - $ref: "#/components/parameters/WalletId"
+      responses:
+        "200":
+          description: Proof and on-chain verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReserveProof"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /v1/quotes:
     post:
       tags: [Quotes]
@@ -576,9 +600,10 @@ components:
       type: object
       required: [platformFeePkr, fxMarginPkr]
       description: |
-        Draft — fee policy to be confirmed against FYP-1 §2.2.6. Platform fee (0.50%) is
-        charged to the partner; the FX margin (capped at 0.25%) is included in the customer
-        price.
+        FYP-1 §2.2.6. The platform fee (default 0.50% of the gold value, ujrah) is billed to the
+        partner and does not change what the customer pays. The FX margin (capped at 0.25%) is
+        built into the customer's price: on a buy the customer pays gold value + margin, on a
+        sell they receive gold value − margin. Rounding always favours the reserve.
       properties:
         platformFeePkr:
           $ref: "#/components/schemas/Pkr"
@@ -726,6 +751,30 @@ components:
         explorerUrl:
           type: string
           format: uri
+
+    ReserveProof:
+      type: object
+      required: [walletId, address, allocationRef, grams, proof, verifiedOnChain, contractAddress]
+      properties:
+        walletId:
+          $ref: "#/components/schemas/WalletIdValue"
+        address:
+          $ref: "#/components/schemas/Address"
+        allocationRef:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{64}$"
+          description: Leaf id — keccak256(abi.encode("MOHAR holding", address)).
+        grams:
+          $ref: "#/components/schemas/Grams"
+        proof:
+          type: array
+          items:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{64}$"
+        verifiedOnChain:
+          type: boolean
+        contractAddress:
+          $ref: "#/components/schemas/Address"
 
     TransactionEvent:
       type: object

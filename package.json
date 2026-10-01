@@ -18,7 +18,8 @@
     "contracts:test": "cd contracts && forge test -vv",
     "chain": "anvil",
     "spec:lint": "redocly lint docs/openapi.yaml",
-    "contracts:deploy:local": "cd contracts && forge script script/Deploy.s.sol --rpc-url local --broadcast"
+    "contracts:deploy:local": "cd contracts && forge script script/Deploy.s.sol --rpc-url local --broadcast",
+    "test:e2e": "pnpm --filter @mohar/api test:e2e"
   },
   "devDependencies": {
     "@redocly/cli": "^2.57.0",
