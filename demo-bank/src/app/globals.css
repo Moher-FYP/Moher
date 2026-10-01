@@ -1,27 +1,61 @@
 @import "tailwindcss";
 
-/* Placeholder theme. Replace with the design system from the Figma/UI work. */
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * Demo Bank — a Pakistani retail bank's app with a Gold Savings feature powered (invisibly)
+ * by MOHAR. Bank green and struck-gold, on a cool paper white; one bold element per screen:
+ * the gold card with its hallmark seal.
+ */
+@theme {
+  --color-ink: #12261e;
+  --color-ink-soft: #4a5d55;
+  --color-paper: #f3f6f2;
+  --color-surface: #ffffff;
+  --color-line: #d5ded8;
+  --color-bank: #0e5a43;
+  --color-bank-deep: #0a4433;
+  --color-gold: #b8892b;
+  --color-gold-deep: #7a5a17;
+  --color-gold-pale: #efe2bd;
+  --color-danger: #a8261d;
+  --color-danger-pale: #f7e3e1;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Public Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--color-paper);
+  color: var(--color-ink);
   font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+/* The gold card: a struck-metal surface, the one decorative moment in the app. */
+.gold-card {
+  background:
+    radial-gradient(120% 140% at 0% 0%, #f6e8bd 0%, transparent 55%),
+    linear-gradient(135deg, #d9b25a 0%, #b8892b 48%, #9b7120 100%);
+  color: #2c1f05;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .settle-in {
+    animation: settle 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes settle {
+    from {
+      transform: translateY(6px);
+      opacity: 0;
+    }
+  }
 }
