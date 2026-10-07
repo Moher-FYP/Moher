@@ -27,6 +27,7 @@ Open http://localhost:3000 and sign in as one of the FYP personas (Hassan, Bushr
 | Sell gold              | Sell any amount, or everything.                                                     |
 | Send gold              | Move gold to another customer.                                                      |
 | Transaction            | Live status while the trade settles; a plain explanation if it is cancelled.        |
+| Receipt                | Printable receipt for a settled trade: grams, price, margin, ledger reference.      |
 | Your gold in the vault | Proof-of-Reserve, plus an on-chain check of this customer's own gold.               |
 
 The right-hand **Behind the scenes** panel lists every SDK call the bank's server makes and

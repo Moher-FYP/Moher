@@ -38,3 +38,32 @@ export function errorMessage(error: unknown): string {
   }
   return "Something went wrong. Try again.";
 }
+
+const receiptFormat = new Intl.DateTimeFormat("en-PK", {
+  timeZone: "Asia/Karachi",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+/** Full date and time in Pakistan time, for receipts. */
+export function fullDate(iso: string): string {
+  return `${receiptFormat.format(new Date(iso))} PKT`;
+}
+
+/** The exact amount MOHAR returned (8 decimals), for receipts. */
+export function exactGrams(amount: string): string {
+  return `${amount} g`;
+}
+
+const usdFormat = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+export function usd(amount: string): string {
+  return `US$ ${usdFormat.format(Number(amount))}`;
+}
