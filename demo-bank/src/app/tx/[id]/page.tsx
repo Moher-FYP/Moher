@@ -6,7 +6,7 @@ import { TxStatus } from "@/components/TxStatus";
 import { primaryButton } from "@/components/ui";
 import { grams, pkr, shortHash, when } from "@/lib/format";
 import { getMohar } from "@/lib/mohar";
-import { requireCustomer } from "@/lib/session";
+import { canView, requireCustomer } from "@/lib/session";
 
 const TITLES = { mint: "Buying gold", burn: "Selling gold", transfer: "Sending gold" } as const;
 
@@ -17,6 +17,7 @@ export default async function TransactionPage({ params }: PageProps<"/tx/[id]">)
   const txn = await getMohar()
     .getTransaction(id)
     .catch(() => notFound());
+  if (!(await canView(customer, txn))) notFound();
 
   return (
     <>

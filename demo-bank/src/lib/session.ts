@@ -57,3 +57,22 @@ export async function withWallet<T>(
     throw error;
   }
 }
+
+/** Which demo customer a MOHAR wallet belongs to, if the bank has opened it this session. */
+export function customerForWallet(walletId: string | undefined): Customer | undefined {
+  for (const [customerId, id] of walletIds) {
+    if (id === walletId) return findCustomer(customerId);
+  }
+  return undefined;
+}
+
+/** True if the transaction is the customer's own, or gold sent to them. */
+export async function canView(
+  customer: Customer,
+  txn: { type: string; walletId: string; counterpartyWalletId?: string },
+): Promise<boolean> {
+  const walletId = await walletIdFor(customer);
+  return (
+    txn.walletId === walletId || (txn.type === "transfer" && txn.counterpartyWalletId === walletId)
+  );
+}

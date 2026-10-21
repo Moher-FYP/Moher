@@ -18,7 +18,7 @@ export function AppHeader({
         {backHref ? (
           <Link
             href={backHref}
-            className="-ml-1 rounded-full px-2 py-1 text-lg leading-none hover:bg-white/10"
+            className="-ml-1 rounded-full px-2 py-1 text-lg leading-none hover:bg-white/10 print:hidden"
             aria-label="Back"
           >
             ‹
@@ -33,7 +33,7 @@ export function AppHeader({
         )}
         <span className="truncate font-display text-lg font-semibold">{title ?? "Demo Bank"}</span>
       </div>
-      <form action={signOut} className="flex items-center gap-2 text-sm text-white/80">
+      <form action={signOut} className="flex items-center gap-2 text-sm text-white/80 print:hidden">
         <span className="hidden sm:inline">{customer.firstName}</span>
         <button type="submit" className="rounded-full px-2 py-1 underline-offset-2 hover:underline">
           Sign out

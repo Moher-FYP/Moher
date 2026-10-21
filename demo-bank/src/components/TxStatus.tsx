@@ -1,6 +1,7 @@
 "use client";
 
 import type { Transaction } from "@mohar/sdk";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const FINAL = new Set(["confirmed", "failed"]);
@@ -45,20 +46,30 @@ export function TxStatus({ initial }: { initial: Transaction }) {
 
   const reached = STEPS.findIndex((s) => s.key === txn.status);
   return (
-    <ol className="space-y-3" aria-live="polite">
-      {STEPS.map((step, i) => (
-        <li key={step.key} className="flex items-center gap-3">
-          <span
-            aria-hidden="true"
-            className={`grid size-7 place-items-center rounded-full text-sm font-bold ${
-              i <= reached ? "bg-bank text-white" : "border border-line text-ink-soft"
-            }`}
-          >
-            {i < reached || txn.status === "confirmed" ? "✓" : i + 1}
-          </span>
-          <span className={i <= reached ? "font-semibold" : "text-ink-soft"}>{step.label}</span>
-        </li>
-      ))}
-    </ol>
+    <>
+      <ol className="space-y-3" aria-live="polite">
+        {STEPS.map((step, i) => (
+          <li key={step.key} className="flex items-center gap-3">
+            <span
+              aria-hidden="true"
+              className={`grid size-7 place-items-center rounded-full text-sm font-bold ${
+                i <= reached ? "bg-bank text-white" : "border border-line text-ink-soft"
+              }`}
+            >
+              {i < reached || txn.status === "confirmed" ? "✓" : i + 1}
+            </span>
+            <span className={i <= reached ? "font-semibold" : "text-ink-soft"}>{step.label}</span>
+          </li>
+        ))}
+      </ol>
+      {txn.status === "confirmed" ? (
+        <Link
+          href={`/tx/${txn.id}/receipt`}
+          className="block text-center font-semibold text-bank underline-offset-2 hover:underline"
+        >
+          View receipt
+        </Link>
+      ) : null}
+    </>
   );
 }

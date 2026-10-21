@@ -73,7 +73,7 @@ export function DevPanel() {
   };
 
   return (
-    <aside aria-labelledby="behind" className="min-w-0 flex-1 space-y-5">
+    <aside aria-labelledby="behind" className="min-w-0 flex-1 space-y-5 print:hidden">
       <div>
         <h2 id="behind" className="font-display text-2xl font-semibold">
           Behind the scenes
