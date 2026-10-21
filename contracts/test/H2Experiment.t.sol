@@ -52,7 +52,7 @@ contract H2ExperimentTest is MoharTestBase {
         if (vm.exists(output)) vm.removeFile(output);
         vm.writeLine(
             output,
-            "trial,side,grams,quoted_price,oracle_price,deviation_bps_floor,outcome,executed_oracle_price,balance_change"
+            "trial,side,grams,quoted_price,oracle_price,deviation_bps_rounded_up,outcome,executed_oracle_price,balance_change"
         );
 
         uint256 executed;

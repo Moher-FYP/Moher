@@ -2,7 +2,8 @@
 H2 experiment — analysis of results-<scenario>.csv written by test/H2Experiment.t.sol.
 
 Deviation = |oracle price at settlement - quoted price| / quoted price, computed exactly from the
-recorded integers (the contract's own rule floors it to whole basis points).
+recorded integers. (The contract's own rule rounds it up to whole basis points; that value is
+the deviation_bps_rounded_up column.)
 
 Run:  python3 analyze.py   -> prints a table and writes summary.csv
 """

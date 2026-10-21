@@ -1,4 +1,4 @@
-trial,side,grams,quoted_price,oracle_price,deviation_bps_floor,outcome,executed_oracle_price,balance_change
+trial,side,grams,quoted_price,oracle_price,deviation_bps_rounded_up,outcome,executed_oracle_price,balance_change
 0,mint,49452947,461600000000,462576588250,22,executed,462576588250,49452947
 1,burn,5212278,461600000000,461774646622,4,executed,461774646622,-5212278
 2,mint,1262729957,461600000000,461064120835,12,executed,461064120835,1262729957

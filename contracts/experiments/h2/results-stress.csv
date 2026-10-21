@@ -1,4 +1,4 @@
-trial,side,grams,quoted_price,oracle_price,deviation_bps_floor,outcome,executed_oracle_price,balance_change
+trial,side,grams,quoted_price,oracle_price,deviation_bps_rounded_up,outcome,executed_oracle_price,balance_change
 0,mint,5927348214,461600000000,446579899435,326,rejected,0,0
 1,burn,412806040,461600000000,456653965571,108,rejected,0,0
 2,mint,3376220073,461600000000,476734792601,328,rejected,0,0
