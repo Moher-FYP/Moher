@@ -1,0 +1,4 @@
+scenario,trials,executed,rejected,executed_at_oracle_price,rejected_that_moved_gold,median_dev_bps,p95_dev_bps,p99_dev_bps,max_dev_bps,max_executed_dev_bps,share_over_target_pct,share_over_limit_pct
+realistic,1000,1000,0,1000,0,3.17,10.02,12.75,18.92,18.92,5.1,0.0
+conservative,1000,1000,0,1000,0,6.7,17.38,22.3,25.29,25.29,29.3,0.0
+stress,1000,107,893,107,0,258.71,466.36,490.92,499.22,49.05,97.4,89.3
