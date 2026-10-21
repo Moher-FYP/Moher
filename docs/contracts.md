@@ -1,6 +1,6 @@
 # Contracts specification
 
-Status: **implemented and tested** (`contracts/src/`, 69 Foundry tests including the H2 fuzz
+Status: **implemented and tested** (`contracts/src/`, 72 Foundry tests including the H2 fuzz
 suite). Source of truth: `contracts/src/interfaces/` and `contracts/src/libraries/MoharTypes.sol`.
 If this document and the code disagree, fix one of them in the same PR.
 
@@ -119,7 +119,7 @@ vice versa. The API signer (viem `signTypedData`) must use these exact strings; 
 ## Tests and the H2 hypothesis
 
 ```bash
-pnpm contracts:test                                            # all 69 tests
+pnpm contracts:test                                            # all 72 tests
 cd contracts && forge test --match-contract H2SlippageTest -vv # the H2 evidence only
 ```
 
@@ -130,6 +130,21 @@ of the quote, and asserts:
 - **P1** — every executed mint/burn records an execution price exactly equal to the oracle
   price in that block (zero deviation);
 - **P2** — every trade whose quote-to-oracle move exceeds 0.50% reverts and moves nothing.
+
+### H2 experiment (Chapter 5 evidence)
+
+`contracts/experiments/h2/` runs 3,000 seeded trades through the real contracts in three market
+scenarios — realistic and conservative 90-second gold moves (volatility from CBOE GVZ) and a
+±5% stress test — and records every outcome:
+
+```bash
+cd contracts/experiments/h2 && python3 generate.py          # inputs (deterministic)
+cd ../.. && RUN_H2_EXPERIMENT=true forge test --match-contract H2ExperimentTest -vv
+cd experiments/h2 && python3 analyze.py                      # summary.csv
+```
+
+The experiment found that `deviationBps` rounded down, letting moves up to 0.5099% through; it
+now rounds up, so the 0.50% limit is exact.
 
 A third fuzz test checks that total supply always equals vault-signed allocations minus
 de-allocations. Other suites cover access control, signature forgery and tampering, replay

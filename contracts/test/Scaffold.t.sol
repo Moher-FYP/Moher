@@ -38,6 +38,9 @@ contract ScaffoldTest is Test {
         // 0.5% move = 50 bps
         assertEq(MoharTypes.deviationBps(4_000e8, 4_020e8), 50);
         assertEq(MoharTypes.deviationBps(4_000e8, 3_980e8), 50);
+        // rounds up: any move past 0.50% counts as at least 51 bps
+        assertEq(MoharTypes.deviationBps(4_000e8, 4_020e8 + 1), 51);
+        assertEq(MoharTypes.deviationBps(4_000e8, 4_000e8 + 1), 1);
     }
 
     function testFuzz_deviationIsSymmetricInDirection(uint256 ref, uint256 delta) public pure {
