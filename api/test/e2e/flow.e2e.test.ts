@@ -216,6 +216,17 @@ describe.skipIf(!hasFoundry)("MOHAR end to end (Anvil + API + SDK)", () => {
     expect((await mohar.getReserve()).fullyBacked).toBe(true);
   });
 
+  it("resets the demo price to the one the feed was deployed with", async () => {
+    const reset = await fetch(`${apiBase()}/dev/price/reset`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${API_KEY}`, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(reset.status).toBe(200);
+    expect(((await reset.json()) as { xauUsd: string }).xauUsd).toBe("4616.00");
+    expect((await mohar.getPrice()).xauUsd).toBe("4616.00");
+  });
+
   it("lists the wallet's transactions, newest first", async () => {
     const list = await mohar.listTransactions({ walletId: alice });
     expect(list.data.length).toBeGreaterThanOrEqual(4);

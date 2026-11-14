@@ -50,7 +50,20 @@ moves on-chain.
 curl -s -X POST localhost:4000/dev/price -H "$K" -H "$J" -d '{"xauUsd":"4662.16"}'
 ```
 
-`/dev/*` routes exist only on a local chain with the mock price feed.
+`/dev/*` routes exist only on a local chain with the mock price feed (or where
+`ENABLE_DEV_ROUTES=true`).
+
+### Real gold price on a testnet
+
+Amoy may have no XAU/USD feed. With `MIRROR_RPC_URL` and `MIRROR_FEED_ADDRESS` set, the price
+keeper reads Chainlink's XAU/USD feed on Polygon mainnet (free) and copies it into the mock
+whenever the two differ by `MIRROR_MIN_MOVE_BPS` (default 0.20%). It never copies a value that
+is zero, implausible for gold or older than four days, and after a manual `/dev/price` move it
+waits `MIRROR_HOLD_SECONDS` before taking over again, so the slippage demo still works.
+
+`POST /dev/price/reset` undoes a manual move: back to the mirrored market price, or, without a
+mirror, to the price the mock feed was deployed with. The demo bank's "Reset price" button
+calls it.
 
 ## What happens inside
 
@@ -66,16 +79,16 @@ POST /v1/mints ─▶ checks (quote valid, wallet active, minting not paused) �
    signed webhook → partner
 ```
 
-| Part        | File                         | Notes                                                                                                                                                                             |
-| ----------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pricing     | `src/domain/pricing.ts`      | bigint only. Buy: customer pays gold value + FX margin (0.25%). Sell: receives value − margin. Platform fee (0.50%) is billed to the partner. Rounding favours the reserve.       |
-| Oracle      | `src/services/price.ts`      | Reads `MoharToken.latestPrice()`, so the API applies the same staleness rule as the contract. A keeper refreshes the mock feed like Chainlink's heartbeat.                        |
-| Mock vault  | `src/vault/mock-vault.ts`    | Allocation book per wallet, EIP-712 signing, Merkle tree (OpenZeppelin `merkle-tree`). Counts an allocation when it signs; releases a de-allocation only after the burn confirms. |
-| Settlement  | `src/services/settlement.ts` | Async worker on a serial queue (single relayer nonce). Publishes the reserve after every confirmed trade.                                                                         |
-| Chain       | `src/chain/mohar-chain.ts`   | viem. ABIs in `abis.ts` are generated from Foundry output — `pnpm --filter @mohar/api abi`.                                                                                       |
-| Idempotency | `src/http/idempotency.ts`    | Same key + body replays the response; a different body is a 409.                                                                                                                  |
-| Store       | `src/store/store.ts`         | JSON file in `api/.data/`, reset automatically when the local chain restarts. Swap for Postgres before a real deployment.                                                         |
-| Webhooks    | `src/services/webhooks.ts`   | Signed with the SDK's own helper; 3 attempts.                                                                                                                                     |
+| Part        | File                         | Notes                                                                                                                                                                                         |
+| ----------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pricing     | `src/domain/pricing.ts`      | bigint only. Buy: customer pays gold value + FX margin (0.25%). Sell: receives value − margin. Platform fee (0.50%) is billed to the partner. Rounding favours the reserve.                   |
+| Oracle      | `src/services/price.ts`      | Reads `MoharToken.latestPrice()`, so the API applies the same staleness rule as the contract. A keeper refreshes the mock feed like Chainlink's heartbeat and can mirror a real feed into it. |
+| Mock vault  | `src/vault/mock-vault.ts`    | Allocation book per wallet, EIP-712 signing, Merkle tree (OpenZeppelin `merkle-tree`). Counts an allocation when it signs; releases a de-allocation only after the burn confirms.             |
+| Settlement  | `src/services/settlement.ts` | Async worker on a serial queue (single relayer nonce). Publishes the reserve after every confirmed trade.                                                                                     |
+| Chain       | `src/chain/mohar-chain.ts`   | viem. ABIs in `abis.ts` are generated from Foundry output — `pnpm --filter @mohar/api abi`.                                                                                                   |
+| Idempotency | `src/http/idempotency.ts`    | Same key + body replays the response; a different body is a 409.                                                                                                                              |
+| Store       | `src/store/store.ts`         | JSON file in `api/.data/`, reset automatically when the local chain restarts. Swap for Postgres before a real deployment.                                                                     |
+| Webhooks    | `src/services/webhooks.ts`   | Signed with the SDK's own helper; 3 attempts.                                                                                                                                                 |
 
 Custodial wallets are derived from `WALLET_MNEMONIC` (`m/44'/60'/1'/0/i`); customers never hold
 keys or gas.

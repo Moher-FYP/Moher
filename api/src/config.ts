@@ -36,6 +36,23 @@ const ConfigSchema = z.object({
   PARTNER_WEBHOOK_URLS: z.string().default("demo-bank=http://localhost:3000/api/mohar/webhooks"),
   WEBHOOK_SECRET: z.string().min(8).default("whsec_local_dev_only"),
 
+  /**
+   * Testnet only: make the mock gold feed follow a real Chainlink XAU/USD feed on another
+   * chain (Polygon mainnet). Set both or neither. Reading that feed costs nothing.
+   */
+  MIRROR_RPC_URL: z.string().url().optional(),
+  MIRROR_FEED_ADDRESS: z
+    .string()
+    .regex(/^0x[0-9a-fA-F]{40}$/)
+    .optional(),
+  /** Copy the reference once it differs from the mock by this much (20 = 0.20%). */
+  MIRROR_MIN_MOVE_BPS: z.coerce.number().int().min(1).max(500).default(20),
+  MIRROR_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(3_600).default(120),
+  /** After a manual /dev/price move, the mirror waits this long before taking over again. */
+  MIRROR_HOLD_SECONDS: z.coerce.number().int().min(0).max(86_400).default(600),
+  /** Ignore a reference older than this. Four days covers a weekend plus a market holiday. */
+  MIRROR_MAX_AGE_SECONDS: z.coerce.number().int().min(60).default(345_600),
+
   /** Where the JSON store lives. ":memory:" keeps everything in memory (tests). */
   DATA_DIR: z.string().default(".data"),
   /** Enables /dev routes (move the mock gold price). Defaults to on for local chains. */
@@ -45,7 +62,9 @@ const ConfigSchema = z.object({
 export type Config = z.infer<typeof ConfigSchema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const parsed = ConfigSchema.safeParse(env);
+  // A line left blank in .env ("RELAYER_PRIVATE_KEY=") means "not set", not an empty value.
+  const set = Object.fromEntries(Object.entries(env).filter(([, value]) => value !== ""));
+  const parsed = ConfigSchema.safeParse(set);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
     throw new Error(`Invalid API configuration:\n  ${issues.join("\n  ")}`);

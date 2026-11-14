@@ -291,6 +291,16 @@ export class MoharChain {
     return { answer, updatedAt };
   }
 
+  /** The price the mock feed was deployed with (its first round). */
+  async mockFeedInitialAnswer(): Promise<bigint> {
+    return this.publicClient.readContract({
+      address: this.deployment.xauUsdFeed,
+      abi: mockV3AggregatorAbi,
+      functionName: "getAnswer",
+      args: [1n],
+    });
+  }
+
   async latestBlockTimestamp(): Promise<bigint> {
     const block = await this.publicClient.getBlock();
     return block.timestamp;

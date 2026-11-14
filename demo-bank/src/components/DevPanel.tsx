@@ -101,7 +101,7 @@ export function DevPanel() {
             [
               ["up", "Gold up 1%"],
               ["down", "Gold down 1%"],
-              ["reset", "Reset to $4,616/oz"],
+              ["reset", "Reset price"],
             ] as const
           ).map(([direction, label]) => (
             <button

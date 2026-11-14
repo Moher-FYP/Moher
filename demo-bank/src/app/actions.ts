@@ -135,13 +135,19 @@ export async function sendGold(formData: FormData): Promise<void> {
 /** Moves the mock gold price (local demo only) to show what happens when the market moves. */
 export async function moveGoldPrice(formData: FormData): Promise<void> {
   const direction = String(formData.get("direction"));
-  const current = await getMohar().getPrice();
-  const now = Number(current.xauUsd);
-  const next = direction === "reset" ? 4616 : direction === "up" ? now * 1.01 : now * 0.99;
-  const response = await loggingFetch(`${moharApiUrl()}/dev/price`, {
+  // "reset" lets MOHAR decide what normal is: the market price when it mirrors a real feed,
+  // otherwise the price the mock feed started with.
+  let path = "/dev/price/reset";
+  let body: Record<string, string> = {};
+  if (direction !== "reset") {
+    const now = Number((await getMohar().getPrice()).xauUsd);
+    path = "/dev/price";
+    body = { xauUsd: (direction === "up" ? now * 1.01 : now * 0.99).toFixed(2) };
+  }
+  const response = await loggingFetch(`${moharApiUrl()}${path}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${moharApiKey()}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ xauUsd: next.toFixed(2) }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: { message?: string } };
