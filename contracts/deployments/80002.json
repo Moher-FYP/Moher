@@ -1,0 +1,13 @@
+{
+  "admin": "0x08Db639191A50618F87ED065cd24F68198C4C13C",
+  "chainId": 80002,
+  "demoPartnerId": "0xd4f68a9fb50bc8f74be42836f4caf00dba8edb16d4009a7b64299fed68bba067",
+  "maxStaleness": 86400,
+  "mockFeed": true,
+  "moharToken": "0x0e400045515297fd9Ffd2B48fc2f491C353df4Ab",
+  "relayer": "0xe6cfdB90e60D00Ee5d8c85E44F026083f192619f",
+  "reserveRegistry": "0x19722fb8F7B497509B48501879122C6D37dFFE4D",
+  "vaultSigner": "0x832a2c7cCB1EB18850DA618E0D474a096e9A4025",
+  "walletRegistry": "0xA55d6387Add80091A1A928fB5F111Ff1fC3d9B0E",
+  "xauUsdFeed": "0x231B8C62c734e76fd0935226cC7aAC9029cf3E19"
+}
