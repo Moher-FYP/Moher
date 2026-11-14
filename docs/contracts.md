@@ -6,12 +6,12 @@ If this document and the code disagree, fix one of them in the same PR.
 
 ## Contracts
 
-| Contract           | Purpose                                                                                          |
-| ------------------ | ------------------------------------------------------------------------------------------------ |
-| `MoharToken`       | ERC-20 gold token. 1 MOHAR = 1 gram, 8 decimals. Mint/burn against vault signatures and oracle.  |
-| `WalletRegistry`   | Which custodial wallets may hold MOHAR and which partner onboarded them. Freeze for AML.         |
-| `ReserveRegistry`  | Proof-of-Reserve: vault-signed totals + Merkle root of allocations; pauses minting on shortfall. |
-| `MockV3Aggregator` | Local/testnet stand-in for the Chainlink XAU/USD feed.                                           |
+| Contract           | Purpose                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `MoharToken`       | ERC-20 gold token. 1 MOHAR = 1 gram, 8 decimals. Mint/burn against vault signatures and oracle.              |
+| `WalletRegistry`   | Which custodial wallets may hold MOHAR and which partner onboarded them. Freeze for AML.                     |
+| `ReserveRegistry`  | Proof-of-Reserve: vault-signed totals + Merkle root of allocations; pauses minting on shortfall.             |
+| `MockV3Aggregator` | Local/testnet stand-in for the Chainlink XAU/USD feed. Only its deployer and the relayer can move the price. |
 
 Network: Polygon Amoy testnet (chain id `80002`) for the FYP; local development on Anvil
 (chain id `31337`). Solidity `0.8.24`, OpenZeppelin Contracts `5.4.0`.
@@ -170,6 +170,10 @@ deterministic and match the committed `deployments/31337.json`.
 For Amoy, fill in `contracts/.env` and run
 `source .env && forge script script/Deploy.s.sol --rpc-url amoy --broadcast`. The script refuses
 to use the public Anvil key on any other network.
+
+The mock feed accepts price updates only from its deployer (the admin) and the updater the deploy
+script appoints (the relayer, which the API's price keeper and `/dev/price` use). On a public
+testnet nobody else can move the gold price the contracts trust.
 
 Changing the mock price for a demo (e.g. to show a trade rejected for moving > 0.50%):
 
