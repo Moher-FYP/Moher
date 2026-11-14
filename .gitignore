@@ -40,3 +40,7 @@ Thumbs.db
 coverage/
 lcov.info
 api/.data/
+
+# Foundry deployment records: keep run-latest.json, skip its timestamped copy and lock file.
+contracts/broadcast/**/run-[0-9]*.json
+contracts/broadcast/**/*.lock
