@@ -2,13 +2,15 @@ import { join } from "node:path";
 import type { Hex } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 import { loadDeployment } from "./chain/deployment.js";
+import type { Deployment } from "./chain/deployment.js";
 import { MoharChain } from "./chain/mohar-chain.js";
+import { ChainlinkReferenceFeed } from "./chain/reference-feed.js";
 import { ANVIL_DEFAULTS, type Config } from "./config.js";
 import type { AppContext } from "./context.js";
 import { PartnerDirectory } from "./http/auth.js";
 import { toApiTransaction } from "./http/presenters.js";
 import { SerialQueue } from "./lib/queue.js";
-import { PriceService } from "./services/price.js";
+import { PriceService, type MirrorOptions } from "./services/price.js";
 import { SettlementService } from "./services/settlement.js";
 import { WebhookSender } from "./services/webhooks.js";
 import { Store } from "./store/store.js";
@@ -16,7 +18,8 @@ import { MockVault } from "./vault/mock-vault.js";
 
 /**
  * Wires the API: reads the deployment, checks keys match the roles granted on-chain, restores
- * the JSON store and the vault's allocation book, and starts the mock price keeper.
+ * the JSON store and the vault's allocation book, and starts the mock price keeper (which
+ * mirrors a real XAU/USD feed when MIRROR_* is set).
  */
 export async function bootstrap(config: Config): Promise<AppContext> {
   const deployment = loadDeployment(config.DEPLOYMENT_FILE);
@@ -78,11 +81,13 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   vault.load(holdings, latest?.attestation.nonce ?? 0n, latest?.attestation.asOf ?? 0n);
 
   const queue = new SerialQueue();
-  const price = new PriceService(chain, queue, toE4(config.USD_PKR_RATE));
+  const mirror = await mirrorOptions(config, deployment);
+  const price = new PriceService(chain, queue, toE4(config.USD_PKR_RATE), mirror);
   const webhooks = new WebhookSender(config.WEBHOOK_SECRET, (txn) =>
     toApiTransaction(txn, (h) => chain.explorerTxUrl(h)),
   );
   const settlement = new SettlementService(chain, vault, store, queue, webhooks);
+  if (mirror) await price.tick(); // start from the market price, not the deploy-time one
   price.startKeeper();
 
   return {
@@ -104,6 +109,42 @@ export async function bootstrap(config: Config): Promise<AppContext> {
       devRoutes: config.ENABLE_DEV_ROUTES ? config.ENABLE_DEV_ROUTES === "true" : local,
     },
   };
+}
+
+/** Builds the price mirror when MIRROR_* is configured; checks the reference feed is gold. */
+async function mirrorOptions(
+  config: Config,
+  deployment: Deployment,
+): Promise<MirrorOptions | undefined> {
+  const { MIRROR_RPC_URL: rpcUrl, MIRROR_FEED_ADDRESS: address } = config;
+  if (!rpcUrl && !address) return undefined;
+  if (!rpcUrl || !address) {
+    throw new Error("Set both MIRROR_RPC_URL and MIRROR_FEED_ADDRESS, or neither");
+  }
+  if (!deployment.mockFeed) {
+    throw new Error(
+      "MIRROR_* is set, but this deployment reads a real price feed. Remove MIRROR_RPC_URL and MIRROR_FEED_ADDRESS.",
+    );
+  }
+  const feed = new ChainlinkReferenceFeed(
+    rpcUrl,
+    address as Hex,
+    BigInt(config.MIRROR_MAX_AGE_SECONDS),
+  );
+  const description = await feed.verify().catch((error: unknown) => {
+    throw new Error(`Cannot use the mirror feed at ${rpcUrl}: ${errorMessage(error)}`);
+  });
+  console.log(`The mock gold price mirrors "${description}" (${address}).`);
+  return {
+    feed,
+    minMoveBps: BigInt(config.MIRROR_MIN_MOVE_BPS),
+    intervalSeconds: config.MIRROR_INTERVAL_SECONDS,
+    holdSeconds: config.MIRROR_HOLD_SECONDS,
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function keyOrDefault(value: string | undefined, fallback: string | false, name: string): Hex {

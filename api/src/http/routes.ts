@@ -339,6 +339,11 @@ export function partnerRoutes(ctx: AppContext): Router {
       const body = parse(DevPriceBody, req.body);
       res.json(toApiPrice(await ctx.price.setMockPrice(parseDecimal(body.xauUsd, 8))));
     });
+
+    /** Undo manual moves: back to the mirrored market price, or the deploy-time price. */
+    router.post("/dev/price/reset", auth, async (_req, res) => {
+      res.json(toApiPrice(await ctx.price.resetMockPrice()));
+    });
   }
 
   return router;

@@ -19,7 +19,8 @@ try {
         .map((p) => p.slug)
         .join(", ")}`,
     );
-    if (ctx.settings.devRoutes) console.log("  dev routes enabled: POST /dev/price");
+    if (ctx.settings.devRoutes)
+      console.log("  dev routes enabled: POST /dev/price, POST /dev/price/reset");
   });
 } catch (error) {
   console.error(`\nMOHAR API could not start:\n  ${(error as Error).message}\n`);

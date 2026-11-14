@@ -37,3 +37,8 @@ bracket_spacing = false
 [rpc_endpoints]
 local = "http://127.0.0.1:8545"
 amoy = "${AMOY_RPC_URL}"
+
+# `forge script ... --rpc-url amoy --broadcast --verify` publishes the source on Polygonscan.
+# One Etherscan API key covers every chain Etherscan serves, Amoy included.
+[etherscan]
+amoy = { key = "${ETHERSCAN_API_KEY}", chain = 80002 }

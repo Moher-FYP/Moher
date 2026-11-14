@@ -167,13 +167,24 @@ On Anvil the script uses account #0 as admin, #1 as relayer and #2 as vault sign
 restarts from an empty chain, so re-run the deploy after every `pnpm chain`; addresses are
 deterministic and match the committed `deployments/31337.json`.
 
-For Amoy, fill in `contracts/.env` and run
-`source .env && forge script script/Deploy.s.sol --rpc-url amoy --broadcast`. The script refuses
-to use the public Anvil key on any other network.
+For Amoy, fill in `contracts/.env`, then dry-run before spending test POL:
+
+```bash
+cd contracts && source .env
+forge script script/Deploy.s.sol --rpc-url amoy                        # simulate only
+forge script script/Deploy.s.sol --rpc-url amoy --broadcast --verify   # deploy + Polygonscan
+```
+
+The script refuses to use the public Anvil key on any other network. `--verify` needs
+`ETHERSCAN_API_KEY`. Commit the `deployments/80002.json` it writes; the API reads it.
 
 The mock feed accepts price updates only from its deployer (the admin) and the updater the deploy
 script appoints (the relayer, which the API's price keeper and `/dev/price` use). On a public
 testnet nobody else can move the gold price the contracts trust.
+
+On Amoy the API can make the mock follow Chainlink's real XAU/USD feed on Polygon mainnet
+(`MIRROR_RPC_URL` and `MIRROR_FEED_ADDRESS` in `api/.env`). The price is then real, but it
+reaches Amoy through one trusted relay, the relayer. The thesis must say so.
 
 Changing the mock price for a demo (e.g. to show a trade rejected for moving > 0.50%):
 
