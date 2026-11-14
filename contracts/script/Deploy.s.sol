@@ -48,9 +48,14 @@ contract Deploy is Script {
         vm.startBroadcast(c.deployerKey);
 
         d.mockFeed = c.feed == address(0);
-        d.priceFeed = d.mockFeed
-            ? address(new MockV3Aggregator(8, "XAU / USD (mock)", c.initialMockPrice))
-            : c.feed;
+        if (d.mockFeed) {
+            MockV3Aggregator mock = new MockV3Aggregator(8, "XAU / USD (mock)", c.initialMockPrice);
+            // The API's price keeper and /dev/price send from the relayer; nobody else may move it.
+            mock.setUpdater(c.relayer);
+            d.priceFeed = address(mock);
+        } else {
+            d.priceFeed = c.feed;
+        }
 
         WalletRegistry registry = new WalletRegistry(c.admin);
         MoharToken token =

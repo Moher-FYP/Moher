@@ -33,6 +33,33 @@ contract ScaffoldTest is Test {
         assertEq(updatedAt, block.timestamp);
     }
 
+    function test_mockFeedRejectsStrangers() public {
+        address stranger = makeAddr("stranger");
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(MockV3Aggregator.NotPriceUpdater.selector, stranger));
+        feed.updateAnswer(1);
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(MockV3Aggregator.NotPriceUpdater.selector, stranger));
+        feed.updateRoundData(9, 1, block.timestamp, block.timestamp);
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(MockV3Aggregator.NotPriceUpdater.selector, stranger));
+        feed.setUpdater(stranger);
+    }
+
+    function test_mockFeedUpdaterCanMovePrice() public {
+        address relayer = makeAddr("relayer");
+        vm.expectEmit(address(feed));
+        emit MockV3Aggregator.UpdaterSet(relayer);
+        feed.setUpdater(relayer);
+
+        vm.prank(relayer);
+        feed.updateAnswer(4_700e8);
+        (, int256 answer,,,) = feed.latestRoundData();
+        assertEq(answer, 4_700e8);
+    }
+
     function test_deviationBps() public pure {
         assertEq(MoharTypes.deviationBps(4_616e8, 4_616e8), 0);
         // 0.5% move = 50 bps

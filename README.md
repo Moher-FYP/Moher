@@ -33,7 +33,7 @@ Demo bank web app (Next.js)          ← stands in for a partner bank
 **Windows:** use WSL2 (Ubuntu) and open the repo with VS Code's WSL extension. Foundry works
 best there.
 
-1. Install [Node 20+](https://nodejs.org), then `corepack enable` (gives you pnpm).
+1. Install Node 24 with [nvm](https://github.com/nvm-sh/nvm) (`nvm install 24`), then `corepack enable` (gives you pnpm).
 2. Install [Foundry](https://book.getfoundry.sh/getting-started/installation):
    `curl -L https://foundry.paradigm.xyz | bash` then `foundryup`.
 3. Clone **with submodules** (the contract libraries live in them):
