@@ -12,6 +12,7 @@ export type ErrorCode =
   | "minting_paused"
   | "insufficient_balance"
   | "idempotency_conflict"
+  | "rate_limited"
   | "not_implemented"
   | "internal_error";
 

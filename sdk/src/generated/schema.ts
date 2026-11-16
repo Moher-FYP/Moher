@@ -492,6 +492,7 @@ export interface components {
           | "minting_paused"
           | "insufficient_balance"
           | "idempotency_conflict"
+          | "rate_limited"
           | "not_implemented"
           | "internal_error";
         message: string;
@@ -513,6 +514,15 @@ export interface components {
     };
     /** @description Missing or invalid API key */
     Unauthorized: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["Error"];
+      };
+    };
+    /** @description The partner sent more requests, or registered more new wallets, than its limit allows. The Retry-After header and `details.retryAfterSeconds` say how long to wait. */
+    TooManyRequests: {
       headers: {
         [name: string]: unknown;
       };
@@ -631,6 +641,7 @@ export interface operations {
       };
       400: components["responses"]["BadRequest"];
       401: components["responses"]["Unauthorized"];
+      429: components["responses"]["TooManyRequests"];
     };
   };
   getWallet: {

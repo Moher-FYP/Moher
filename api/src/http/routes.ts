@@ -1,16 +1,24 @@
-import { Router, type Request, type Response } from "express";
-import { keccak256, toHex } from "viem";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { mapChainError } from "../chain/errors.js";
 import type { AppContext } from "../context.js";
-import { formatGrams, formatPkr, parseDecimal, parseGrams, parsePkr } from "../domain/money.js";
+import {
+  formatDecimal,
+  formatGrams,
+  formatPkr,
+  parseDecimal,
+  parseGrams,
+  parsePkr,
+} from "../domain/money.js";
 import { computeQuote, valuePaisa, type QuoteAmount } from "../domain/pricing.js";
-import type { QuoteRecord, WalletRecord } from "../domain/types.js";
+import type { QuoteRecord, TransactionRecord, WalletRecord } from "../domain/types.js";
 import { ApiError } from "../errors.js";
 import { newId } from "../lib/ids.js";
+import { PriceBandError } from "../services/price.js";
 import { holdingRef } from "../vault/mock-vault.js";
-import { partnerOf, requirePartner } from "./auth.js";
+import { partnerOf, requireOperator, requirePartner } from "./auth.js";
 import { idempotent } from "./idempotency.js";
+import { rateLimit, RateLimiter, tooManyRequests } from "./rate-limit.js";
 import { toApiPrice, toApiQuote, toApiTransaction, toApiWallet } from "./presenters.js";
 
 // ------------------------------------------------------------------ request schemas
@@ -71,7 +79,18 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
 
 export function partnerRoutes(ctx: AppContext): Router {
   const router = Router();
-  const auth = requirePartner(ctx.partners);
+  // Every partner route: a valid key, then that partner's request allowance.
+  const authenticate = requirePartner(ctx.partners);
+  const allowance = rateLimit(
+    new RateLimiter(ctx.settings.requestsPerMinute, 60_000),
+    (res) => partnerOf(res).slug,
+  );
+  const auth = (req: Request, res: Response, next: NextFunction): void => {
+    authenticate(req, res, (error?: unknown) => (error ? next(error) : allowance(req, res, next)));
+  };
+  // Registering a wallet is an on-chain transaction the relayer pays for, so it has its own,
+  // smaller allowance. Only new wallets count; returning an existing one is free.
+  const registrations = new RateLimiter(ctx.settings.walletRegistrationsPerHour, 3_600_000);
   const once = idempotent(ctx.store);
   const present = (txn: Parameters<typeof toApiTransaction>[0]) =>
     toApiTransaction(txn, (h) => ctx.chain.explorerTxUrl(h));
@@ -119,6 +138,27 @@ export function partnerRoutes(ctx: AppContext): Router {
       throw new ApiError(409, "quote_expired", "The quote expired. Request a new one.");
     }
     return quote;
+  }
+
+  /**
+   * Checks a quote and marks it used in one uninterrupted step, so one quote settles once.
+   *
+   * A handler's first usableQuote() check is followed by `await`s (chain reads), and while it
+   * waits a second request for the same quote can pass the same check. So the check is repeated
+   * here, and nothing between it and saveQuote() waits: Node runs this block to the end before
+   * it looks at any other request. `start` must therefore be synchronous (settlement.start*
+   * only records the transaction and queues the on-chain work).
+   */
+  function claimQuote(
+    res: Response,
+    id: string,
+    side: "buy" | "sell",
+    start: (quote: QuoteRecord) => TransactionRecord,
+  ): TransactionRecord {
+    const quote = usableQuote(res, id, side);
+    const txn = start(quote);
+    ctx.store.saveQuote({ ...quote, usedByTransactionId: txn.id });
+    return txn;
   }
 
   // ---------------------------------------------------------------- public
@@ -169,10 +209,12 @@ export function partnerRoutes(ctx: AppContext): Router {
     const result = await ctx.queue.run(async () => {
       const existing = ctx.store.findWalletByCustomer(partner.slug, body.externalCustomerId);
       if (existing) return { wallet: existing, created: false };
+      const wait = registrations.take(partner.slug);
+      if (wait > 0) throw tooManyRequests(res, wait, "new wallets this hour");
 
       const index = ctx.store.nextDerivationIndex();
       const address = ctx.deriveWalletAddress(index);
-      const kycAttestationHash = keccak256(toHex(body.kyc.reference));
+      const kycAttestationHash = ctx.kycFingerprint(partner.slug, body.kyc.reference);
       try {
         await ctx.chain.registerWallet(address, partner.partnerId, kycAttestationHash);
       } catch (error) {
@@ -280,8 +322,9 @@ export function partnerRoutes(ctx: AppContext): Router {
     if (await ctx.chain.mintingPaused()) {
       throw new ApiError(409, "minting_paused", "Minting is paused");
     }
-    const txn = ctx.settlement.startMint(partnerOf(res), quote, wallet);
-    ctx.store.saveQuote({ ...quote, usedByTransactionId: txn.id });
+    const txn = claimQuote(res, id, "buy", (claimed) =>
+      ctx.settlement.startMint(partnerOf(res), claimed, wallet),
+    );
     res.status(202).json(present(txn));
   });
 
@@ -291,8 +334,9 @@ export function partnerRoutes(ctx: AppContext): Router {
     const wallet = ownWallet(res, quote.walletId);
     await requireActive(wallet);
     await requireBalance(wallet, BigInt(quote.grams));
-    const txn = ctx.settlement.startBurn(partnerOf(res), quote, wallet);
-    ctx.store.saveQuote({ ...quote, usedByTransactionId: txn.id });
+    const txn = claimQuote(res, id, "sell", (claimed) =>
+      ctx.settlement.startBurn(partnerOf(res), claimed, wallet),
+    );
     res.status(202).json(present(txn));
   });
 
@@ -331,17 +375,36 @@ export function partnerRoutes(ctx: AppContext): Router {
     res.json(present(txn));
   });
 
-  // ---------------------------------------------------------------- dev (local demo only)
+  // ---------------------------------------------------------------- dev (demo only)
 
-  if (ctx.settings.devRoutes && ctx.chain.deployment.mockFeed) {
-    /** Move the mock gold price, e.g. to demo a trade rejected for moving > 0.50%. */
-    router.post("/dev/price", auth, async (req, res) => {
+  // Mounted only with the mock feed and an operator key. A partner key is refused here: the
+  // party that trades must not be able to set the price it trades at.
+  if (ctx.settings.devRoutes && ctx.chain.deployment.mockFeed && ctx.settings.devApiKey) {
+    const operator = requireOperator(ctx.settings.devApiKey);
+
+    /**
+     * Move the mock gold price, e.g. to demo a trade rejected for moving > 0.50%. The new price
+     * must stay within the configured band of the reference price.
+     */
+    router.post("/dev/price", operator, async (req, res) => {
       const body = parse(DevPriceBody, req.body);
-      res.json(toApiPrice(await ctx.price.setMockPrice(parseDecimal(body.xauUsd, 8))));
+      try {
+        const price = await ctx.price.setMockPrice(
+          parseDecimal(body.xauUsd, 8),
+          ctx.settings.devPriceBandBps,
+        );
+        res.json(toApiPrice(price));
+      } catch (error) {
+        if (!(error instanceof PriceBandError)) throw error;
+        throw new ApiError(400, "invalid_request", error.message, {
+          referenceXauUsd: formatDecimal(error.referenceE8 / 10n ** 6n, 2),
+          bandPercent: Number(error.bandBps) / 100,
+        });
+      }
     });
 
     /** Undo manual moves: back to the mirrored market price, or the deploy-time price. */
-    router.post("/dev/price/reset", auth, async (_req, res) => {
+    router.post("/dev/price/reset", operator, async (_req, res) => {
       res.json(toApiPrice(await ctx.price.resetMockPrice()));
     });
   }

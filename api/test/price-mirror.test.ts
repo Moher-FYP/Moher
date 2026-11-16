@@ -6,7 +6,7 @@ import {
 } from "../src/chain/reference-feed.js";
 import { loadConfig } from "../src/config.js";
 import { SerialQueue } from "../src/lib/queue.js";
-import { PriceService, type PriceChain } from "../src/services/price.js";
+import { PriceBandError, PriceService, type PriceChain } from "../src/services/price.js";
 
 const E8 = 10n ** 8n;
 const usd = (dollars: number) => BigInt(Math.round(dollars * 100)) * (E8 / 100n);
@@ -178,5 +178,38 @@ describe("configuration", () => {
     expect(() => loadConfig({ MIRROR_FEED_ADDRESS: "xau-usd.data.eth" })).toThrow(
       /MIRROR_FEED_ADDRESS/,
     );
+  });
+});
+
+describe("manual price band", () => {
+  it("accepts a move inside the band and refuses one outside it", async () => {
+    const s = service(usd(4700), fixedReference(usd(4700)));
+    await s.service.setMockPrice(usd(4747), 500n); // +1%
+    expect(s.price()).toBe(usd(4747));
+
+    await expect(s.service.setMockPrice(usd(100), 500n)).rejects.toBeInstanceOf(PriceBandError);
+    await expect(s.service.setMockPrice(usd(4936), 500n)).rejects.toBeInstanceOf(PriceBandError);
+    expect(s.price()).toBe(usd(4747)); // nothing was sent to the chain
+    expect(s.setMockPrice).toHaveBeenCalledTimes(1);
+  });
+
+  it("measures from the reference price, so small steps cannot walk the price away", async () => {
+    const s = service(usd(4700), fixedReference(usd(4700)));
+    // Five "up 1%" presses: 1.01^5 is +5.1%, so the fifth leaves the 5% band.
+    let price = 4700;
+    for (let press = 1; press <= 4; press++) {
+      price *= 1.01;
+      await s.service.setMockPrice(usd(price), 500n);
+    }
+    await expect(s.service.setMockPrice(usd(price * 1.01), 500n)).rejects.toMatchObject({
+      referenceE8: usd(4700),
+      bandBps: 500n,
+    });
+  });
+
+  it("without a mirror, measures from the price the feed was deployed with", async () => {
+    const plain = new PriceService(fakeChain(usd(4616)).chain, new SerialQueue(), 2_790_500n);
+    await plain.setMockPrice(usd(4662.16), 500n);
+    await expect(plain.setMockPrice(usd(5000), 500n)).rejects.toBeInstanceOf(PriceBandError);
   });
 });

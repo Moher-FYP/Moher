@@ -11,3 +11,8 @@ ignoredBuiltDependencies:
 # esbuild (used by tsx and vitest) needs its postinstall to fetch the right binary.
 onlyBuiltDependencies:
   - esbuild
+
+# Security overrides for dependencies of dependencies (pnpm audit).
+# uuid below 11.1.1 has a known flaw; @metamask/utils (via @openzeppelin/merkle-tree) asks for 9.
+overrides:
+  "uuid@<11.1.1": ^11.1.1

@@ -1,11 +1,10 @@
 "use server";
 
-import { MoharApiError } from "@mohar/sdk";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { findCustomer, type Customer } from "@/lib/customers";
 import { errorMessage } from "@/lib/format";
-import { getMohar, moharApiKey, moharApiUrl } from "@/lib/mohar";
+import { getMohar, moharApiUrl, moharDevKey } from "@/lib/mohar";
 import { loggingFetch } from "@/lib/devlog";
 import { recallQuote, rememberQuote } from "@/lib/quotes";
 import { SESSION_COOKIE, requireCustomer, walletIdFor, withWallet } from "@/lib/session";
@@ -132,8 +131,11 @@ export async function sendGold(formData: FormData): Promise<void> {
 
 // ------------------------------------------------------------------ demo controls
 
-/** Moves the mock gold price (local demo only) to show what happens when the market moves. */
-export async function moveGoldPrice(formData: FormData): Promise<void> {
+/**
+ * Moves the mock gold price (demo only) to show what happens when the market moves. Returns a
+ * message when MOHAR refuses, e.g. because the price would leave the allowed band.
+ */
+export async function moveGoldPrice(formData: FormData): Promise<string | undefined> {
   const direction = String(formData.get("direction"));
   // "reset" lets MOHAR decide what normal is: the market price when it mirrors a real feed,
   // otherwise the price the mock feed started with.
@@ -146,15 +148,12 @@ export async function moveGoldPrice(formData: FormData): Promise<void> {
   }
   const response = await loggingFetch(`${moharApiUrl()}${path}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${moharApiKey()}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${moharDevKey()}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: { message?: string } };
-    throw new MoharApiError(
-      response.status,
-      "unknown",
-      body?.error?.message ?? "Price change failed",
-    );
-  }
+  if (response.ok) return undefined;
+  const failure = (await response.json().catch(() => null)) as { error?: { message?: string } };
+  if (response.status === 404) return "Price controls are switched off on this MOHAR server.";
+  if (response.status === 401) return "This demo's operator key (MOHAR_DEV_KEY) was refused.";
+  return failure?.error?.message ?? "The price could not be changed.";
 }

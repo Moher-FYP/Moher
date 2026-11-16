@@ -7,8 +7,10 @@ import { MoharChain } from "./chain/mohar-chain.js";
 import { ChainlinkReferenceFeed } from "./chain/reference-feed.js";
 import { ANVIL_DEFAULTS, type Config } from "./config.js";
 import type { AppContext } from "./context.js";
+import { kycFingerprint } from "./domain/kyc.js";
 import { PartnerDirectory } from "./http/auth.js";
 import { toApiTransaction } from "./http/presenters.js";
+import { findWeakSecrets, LOCAL_ONLY } from "./secrets.js";
 import { SerialQueue } from "./lib/queue.js";
 import { PriceService, type MirrorOptions } from "./services/price.js";
 import { SettlementService } from "./services/settlement.js";
@@ -37,6 +39,32 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   );
   const mnemonic = config.WALLET_MNEMONIC ?? (local ? ANVIL_DEFAULTS.walletMnemonic : undefined);
   if (!mnemonic) throw new Error("WALLET_MNEMONIC is required outside local Anvil");
+
+  // The repo's default API key, webhook secret and operator key are public. Off local Anvil,
+  // refuse to start with them (or with anything short or shared) before touching the chain.
+  const partners = new PartnerDirectory(
+    config.PARTNER_API_KEYS,
+    config.PARTNER_WEBHOOK_URLS,
+    config.PARTNER_WEBHOOK_SECRETS,
+    config.WEBHOOK_SECRET,
+  );
+  const devRoutes = config.ENABLE_DEV_ROUTES ? config.ENABLE_DEV_ROUTES === "true" : local;
+  const devApiKey = config.DEV_API_KEY ?? (local ? LOCAL_ONLY.devApiKey : undefined);
+  const kycHashSecret = config.KYC_HASH_SECRET ?? (local ? LOCAL_ONLY.kycHashSecret : undefined);
+  if (!local) {
+    const problems = findWeakSecrets({
+      apiKeys: partners.apiKeys(),
+      partners: partners.all(),
+      devApiKey,
+      devRoutes,
+      kycHashSecret,
+    });
+    if (problems.length > 0) {
+      throw new Error(
+        `These secrets are not safe outside local Anvil:\n  - ${problems.join("\n  - ")}\n  Generate each with: openssl rand -hex 24`,
+      );
+    }
+  }
 
   const chain = new MoharChain(deployment, config.RPC_URL, relayerKey);
   const rpcChainId = await chain.getChainId().catch(() => {
@@ -73,20 +101,36 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   const { reset } = store.open(await chain.chainMarker());
   if (reset) console.log("Started a fresh store for this chain.");
 
+  const queue = new SerialQueue();
+  const webhooks = new WebhookSender((txn) => toApiTransaction(txn, (h) => chain.explorerTxUrl(h)));
+  const settlement = new SettlementService(chain, vault, store, queue, webhooks);
+
+  // Finish what the previous run left unfinished, before the vault book is read and before
+  // any request is served.
+  const cleared = store.clearInProgressIdempotency();
+  const recovered = await settlement.recover((slug) => partners.get(slug));
+  if (cleared + recovered.confirmed + recovered.failed + recovered.stillWaiting > 0) {
+    console.log(
+      `Recovered after restart: ${recovered.confirmed} confirmed, ${recovered.failed} failed, ` +
+        `${recovered.stillWaiting} still waiting, ${cleared} interrupted request(s) cleared.`,
+    );
+  }
+
   // Rebuild the vault's allocation book from on-chain balances of known wallets.
   const holdings = await Promise.all(
     store.allWallets().map(async (w) => [w.address, await chain.balanceOf(w.address)] as const),
   );
   const latest = await chain.latestReserve();
   vault.load(holdings, latest?.attestation.nonce ?? 0n, latest?.attestation.asOf ?? 0n);
+  if (recovered.confirmed > 0) {
+    // A recovered trade changed the supply after the last reserve proof was published.
+    await queue
+      .run(() => settlement.publishReserve())
+      .catch((error: unknown) => console.error("Reserve publish failed:", errorMessage(error)));
+  }
 
-  const queue = new SerialQueue();
   const mirror = await mirrorOptions(config, deployment);
   const price = new PriceService(chain, queue, toE4(config.USD_PKR_RATE), mirror);
-  const webhooks = new WebhookSender(config.WEBHOOK_SECRET, (txn) =>
-    toApiTransaction(txn, (h) => chain.explorerTxUrl(h)),
-  );
-  const settlement = new SettlementService(chain, vault, store, queue, webhooks);
   if (mirror) await price.tick(); // start from the market price, not the deploy-time one
   price.startKeeper();
 
@@ -96,17 +140,23 @@ export async function bootstrap(config: Config): Promise<AppContext> {
     vault,
     price,
     settlement,
-    partners: new PartnerDirectory(config.PARTNER_API_KEYS, config.PARTNER_WEBHOOK_URLS),
+    partners,
     queue,
     deriveWalletAddress: (index) =>
       mnemonicToAccount(mnemonic, { accountIndex: 1, addressIndex: index }).address,
+    kycFingerprint: (partnerSlug, reference) =>
+      kycFingerprint(kycHashSecret ?? LOCAL_ONLY.kycHashSecret, partnerSlug, reference),
     settings: {
       fees: {
         platformFeeBps: BigInt(config.PLATFORM_FEE_BPS),
         fxMarginBps: BigInt(config.FX_MARGIN_BPS),
       },
       quoteTtlSeconds: config.QUOTE_TTL_SECONDS,
-      devRoutes: config.ENABLE_DEV_ROUTES ? config.ENABLE_DEV_ROUTES === "true" : local,
+      requestsPerMinute: config.RATE_LIMIT_PER_MINUTE,
+      walletRegistrationsPerHour: config.WALLET_REGISTRATIONS_PER_HOUR,
+      devRoutes,
+      devApiKey,
+      devPriceBandBps: BigInt(config.DEV_PRICE_BAND_BPS),
     },
   };
 }

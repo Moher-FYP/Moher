@@ -11,6 +11,10 @@ export interface Partner {
   /** keccak256(slug) — the id registered in WalletRegistry. */
   partnerId: Hex;
   webhookUrl?: string;
+  /** Signs this partner's webhooks. */
+  webhookSecret?: string;
+  /** True when the secret is the partner's own, false when it is the shared local fallback. */
+  ownsWebhookSecret?: boolean;
 }
 
 export interface WalletRecord {

@@ -25,6 +25,17 @@ export interface MirrorOptions {
   holdSeconds: number;
 }
 
+/** A manual price was further from the reference price than the allowed band. */
+export class PriceBandError extends Error {
+  constructor(
+    readonly referenceE8: bigint,
+    readonly bandBps: bigint,
+  ) {
+    super(`The price must stay within ${Number(bandBps) / 100}% of the reference price`);
+    this.name = "PriceBandError";
+  }
+}
+
 export interface CurrentPrice {
   /** USD per troy ounce, 8 decimals (from the on-chain feed). */
   xauUsdE8: bigint;
@@ -72,8 +83,16 @@ export class PriceService {
   /**
    * Dev/demo only: move the mock gold price (e.g. to show a trade rejected for slippage). With
    * a mirror, the manual price holds for `holdSeconds` before the mirror takes over again.
+   *
+   * With `maxMoveBps`, the price must stay within that distance of the reference price (see
+   * referencePrice), so the demo control can show a 1% move but cannot set gold to $100.
    */
-  async setMockPrice(xauUsdE8: bigint): Promise<CurrentPrice> {
+  async setMockPrice(xauUsdE8: bigint, maxMoveBps?: bigint): Promise<CurrentPrice> {
+    if (maxMoveBps !== undefined) {
+      const reference = await this.referencePrice();
+      const gap = xauUsdE8 > reference ? xauUsdE8 - reference : reference - xauUsdE8;
+      if (gap * 10_000n > reference * maxMoveBps) throw new PriceBandError(reference, maxMoveBps);
+    }
     await this.queue.run(() => this.chain.setMockPrice(xauUsdE8));
     if (this.mirror) this.holdUntilMs = this.nowMs() + this.mirror.holdSeconds * 1000;
     return this.read();
@@ -84,12 +103,17 @@ export class PriceService {
    * price; without one, back to the price the mock feed was deployed with.
    */
   async resetMockPrice(): Promise<CurrentPrice> {
-    const target = this.mirror
-      ? (await this.mirror.feed.read()).answer
-      : await this.chain.mockFeedInitialAnswer();
+    const target = await this.referencePrice();
     await this.queue.run(() => this.chain.setMockPrice(target));
     this.holdUntilMs = 0;
     return this.read();
+  }
+
+  /** What "normal" is for the mock feed: the mirrored market price, or the deploy-time price. */
+  private async referencePrice(): Promise<bigint> {
+    return this.mirror
+      ? (await this.mirror.feed.read()).answer
+      : this.chain.mockFeedInitialAnswer();
   }
 
   /** Keeps the mock feed fresh and, with a mirror, in step. No-op with a real Chainlink feed. */

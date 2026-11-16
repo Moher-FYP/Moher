@@ -11,10 +11,10 @@ import {MockV3Aggregator} from "../src/mocks/MockV3Aggregator.sol";
 ///         XAU/USD feed is given), grants every role from docs/contracts.md, registers the demo
 ///         partner, and writes the addresses to deployments/<chainId>.json for the API.
 ///
-/// Local (Anvil, no env needed):
+/// Local (Anvil; the environment and contracts/.env are ignored):
 ///   forge script script/Deploy.s.sol --rpc-url local --broadcast
-/// Amoy:
-///   source .env && forge script script/Deploy.s.sol --rpc-url amoy --broadcast
+/// Amoy (settings from contracts/.env):
+///   forge script script/Deploy.s.sol --rpc-url amoy --broadcast
 contract Deploy is Script {
     // Anvil's well-known development keys. Public knowledge — NEVER use them on a real network.
     uint256 internal constant ANVIL_KEY_0 =
@@ -22,6 +22,10 @@ contract Deploy is Script {
     address internal constant ANVIL_ACCOUNT_1 = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
     address internal constant ANVIL_ACCOUNT_2 = 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC;
     uint256 internal constant ANVIL_CHAIN_ID = 31337;
+
+    int256 internal constant DEFAULT_XAU_USD = 4_616e8;
+    uint256 internal constant DEFAULT_MAX_STALENESS = 1 hours;
+    string internal constant DEFAULT_PARTNER = "demo-bank";
 
     struct Config {
         uint256 deployerKey;
@@ -84,25 +88,34 @@ contract Deploy is Script {
     }
 
     function _config() internal view returns (Config memory c) {
-        bool local = block.chainid == ANVIL_CHAIN_ID;
-
-        if (local) {
-            c.deployerKey = vm.envOr("DEPLOYER_PRIVATE_KEY", ANVIL_KEY_0);
-            c.relayer = vm.envOr("RELAYER_ADDRESS", ANVIL_ACCOUNT_1);
-            c.vaultSigner = vm.envOr("VAULT_SIGNER_ADDRESS", ANVIL_ACCOUNT_2);
+        if (block.chainid == ANVIL_CHAIN_ID) {
+            // Local Anvil always gets the fixed development setup and never reads the
+            // environment. Foundry loads contracts/.env for every command, so reading it here
+            // would make a local run (and the end-to-end tests) deploy with the testnet
+            // deployer key, which has no funds on Anvil, and with the testnet's settings.
+            c.deployerKey = ANVIL_KEY_0;
+            c.relayer = ANVIL_ACCOUNT_1;
+            c.vaultSigner = ANVIL_ACCOUNT_2;
+            c.initialMockPrice = DEFAULT_XAU_USD;
+            c.maxStaleness = DEFAULT_MAX_STALENESS;
+            c.demoPartnerId = keccak256(bytes(DEFAULT_PARTNER));
         } else {
             // On any public network every key and address must be given explicitly.
             c.deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
             c.relayer = vm.envAddress("RELAYER_ADDRESS");
             c.vaultSigner = vm.envAddress("VAULT_SIGNER_ADDRESS");
             require(c.deployerKey != ANVIL_KEY_0, "Deploy: Anvil key on a public network");
-        }
 
+            c.feed = vm.envOr("XAU_USD_FEED_ADDRESS", address(0));
+            c.initialMockPrice = vm.envOr("INITIAL_XAU_USD", DEFAULT_XAU_USD);
+            c.maxStaleness = vm.envOr("MAX_STALENESS_SECONDS", DEFAULT_MAX_STALENESS);
+            // A line left blank in .env ("DEMO_PARTNER_ID=") means "not set". Hashing the empty
+            // string would register a partner id the API never uses.
+            string memory partner = vm.envOr("DEMO_PARTNER_ID", DEFAULT_PARTNER);
+            if (bytes(partner).length == 0) partner = DEFAULT_PARTNER;
+            c.demoPartnerId = keccak256(bytes(partner));
+        }
         c.admin = vm.addr(c.deployerKey);
-        c.feed = vm.envOr("XAU_USD_FEED_ADDRESS", address(0));
-        c.initialMockPrice = vm.envOr("INITIAL_XAU_USD", int256(4_616e8));
-        c.maxStaleness = vm.envOr("MAX_STALENESS_SECONDS", uint256(1 hours));
-        c.demoPartnerId = keccak256(bytes(vm.envOr("DEMO_PARTNER_ID", string("demo-bank"))));
     }
 
     function _write(Deployment memory d, Config memory c) internal {

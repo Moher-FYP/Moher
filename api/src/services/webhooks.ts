@@ -8,28 +8,32 @@ const RETRY_DELAYS_MS = [0, 1_000, 5_000];
 
 /**
  * Sends signed webhooks to partners. Uses the SDK's signing helper, so the API and every
- * partner verify with exactly the same code. Delivery is best effort with three attempts; a
- * partner that misses one can always poll GET /v1/transactions/{id}.
+ * partner verify with exactly the same code. Each partner's events are signed with that
+ * partner's own secret. Delivery is best effort with three attempts; a partner that misses one
+ * can always poll GET /v1/transactions/{id}.
  */
 export class WebhookSender {
   constructor(
-    private readonly secret: string,
     private readonly present: (txn: TransactionRecord) => unknown,
     private readonly fetchImpl: typeof fetch = globalThis.fetch,
   ) {}
 
   send(partner: Partner, type: WebhookEventType, txn: TransactionRecord): void {
     if (!partner.webhookUrl) return;
+    if (!partner.webhookSecret) {
+      console.warn(`No webhook secret for ${partner.slug}; event for ${txn.id} not sent`);
+      return;
+    }
     const body = JSON.stringify({
       id: newId("evt"),
       type,
       createdAt: new Date().toISOString(),
       data: this.present(txn),
     });
-    void this.deliver(partner.webhookUrl, body);
+    void this.deliver(partner.webhookUrl, partner.webhookSecret, body);
   }
 
-  private async deliver(url: string, body: string): Promise<void> {
+  private async deliver(url: string, secret: string, body: string): Promise<void> {
     for (const delay of RETRY_DELAYS_MS) {
       if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
       try {
@@ -37,7 +41,7 @@ export class WebhookSender {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Mohar-Signature": buildWebhookSignatureHeader(body, this.secret),
+            "Mohar-Signature": buildWebhookSignatureHeader(body, secret),
           },
           body,
         });

@@ -23,6 +23,8 @@ info:
     - Settlement is asynchronous: `POST /v1/mints` returns `202` with a `pending` transaction.
       Final status arrives by webhook (`transaction.confirmed` / `transaction.failed`) or by
       polling `GET /v1/transactions/{id}`.
+    - Each partner has a request allowance per minute and a smaller allowance of new wallets
+      per hour. Going over either returns `429` with a `Retry-After` header.
 
     ## Status
     Draft for FYP-2 build. Changes to this file go through a pull request first; the SDK types
@@ -109,6 +111,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   /v1/wallets/{walletId}:
     get:
@@ -451,6 +455,14 @@ components:
             $ref: "#/components/schemas/Error"
     Unauthorized:
       description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: >-
+        The partner sent more requests, or registered more new wallets, than its limit allows.
+        The Retry-After header and `details.retryAfterSeconds` say how long to wait.
       content:
         application/json:
           schema:
@@ -812,6 +824,7 @@ components:
                 - minting_paused
                 - insufficient_balance
                 - idempotency_conflict
+                - rate_limited
                 - not_implemented
                 - internal_error
             message:

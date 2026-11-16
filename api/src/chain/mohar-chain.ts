@@ -3,6 +3,7 @@ import {
   createWalletClient,
   defineChain,
   http,
+  WaitForTransactionReceiptTimeoutError,
   type Address,
   type Chain,
   type Hex,
@@ -316,6 +317,27 @@ export class MoharChain {
   explorerAddressUrl(address: Address): string | undefined {
     const base = EXPLORERS[this.chainId];
     return base ? `${base}/address/${address}` : undefined;
+  }
+
+  /**
+   * The outcome of a transaction sent earlier, waiting up to `timeoutMs` for it to be mined.
+   * Undefined when there is still no receipt: it may yet be mined, so the caller must not
+   * treat that as a failure.
+   */
+  async waitForOutcome(
+    hash: Hex,
+    timeoutMs: number,
+  ): Promise<{ succeeded: boolean; blockNumber: bigint } | undefined> {
+    try {
+      const receipt = await this.publicClient.waitForTransactionReceipt({
+        hash,
+        timeout: timeoutMs,
+      });
+      return { succeeded: receipt.status === "success", blockNumber: receipt.blockNumber };
+    } catch (error) {
+      if (error instanceof WaitForTransactionReceiptTimeoutError) return undefined;
+      throw error;
+    }
   }
 
   // ---------------------------------------------------------------- internal

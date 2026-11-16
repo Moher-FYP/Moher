@@ -15,6 +15,7 @@ import { createApp } from "../../src/app.js";
 import { bootstrap } from "../../src/bootstrap.js";
 import { loadConfig } from "../../src/config.js";
 import type { AppContext } from "../../src/context.js";
+import { parseGrams } from "../../src/domain/money.js";
 
 /**
  * The FYP demo flow, end to end, exactly as a partner bank would run it:
@@ -27,6 +28,8 @@ const PORT = 18_545;
 const RPC_URL = `http://127.0.0.1:${PORT}`;
 const API_KEY = "mk_test_e2e";
 const WEBHOOK_SECRET = "whsec_e2e_secret";
+/** The operator key for /dev routes. Partner keys must not work there. */
+const DEV_KEY = "mk_dev_e2e";
 
 const hasFoundry = spawnSync("anvil", ["--version"]).status === 0;
 
@@ -71,6 +74,7 @@ describe.skipIf(!hasFoundry)("MOHAR end to end (Anvil + API + SDK)", () => {
         PARTNER_API_KEYS: `${API_KEY}=demo-bank`,
         PARTNER_WEBHOOK_URLS: `demo-bank=http://127.0.0.1:${webhookPort}/webhooks`,
         WEBHOOK_SECRET,
+        DEV_API_KEY: DEV_KEY,
       }),
     );
     api = createApp(ctx).listen(0);
@@ -143,6 +147,27 @@ describe.skipIf(!hasFoundry)("MOHAR end to end (Anvil + API + SDK)", () => {
     await settle(first);
   });
 
+  it("settles a quote once when two requests for it arrive together", async () => {
+    const before = parseGrams((await mohar.getBalance(alice)).grams);
+    const quote = await mohar.createQuote({ walletId: alice, side: "buy", amountPkr: "2000.00" });
+
+    // Different Idempotency-Keys, so the replay protection above does not apply: only the
+    // quote itself can stop the second request.
+    const results = await Promise.allSettled([
+      mohar.mint({ quoteId: quote.id }, { idempotencyKey: "order-race-a" }),
+      mohar.mint({ quoteId: quote.id }, { idempotencyKey: "order-race-b" }),
+    ]);
+    const accepted = results.filter((r) => r.status === "fulfilled");
+    const refused = results.filter((r) => r.status === "rejected");
+    expect(accepted).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(refused[0]!.reason).toMatchObject({ status: 409 });
+
+    expect((await settle(accepted[0]!.value)).status).toBe("confirmed");
+    const after = parseGrams((await mohar.getBalance(alice)).grams);
+    expect(after - before).toBe(parseGrams(quote.grams));
+  });
+
   it("sends a signed webhook the bank can verify with the SDK", async () => {
     await waitFor(async () => webhooks.length > 0);
     const hook = webhooks[0]!;
@@ -200,11 +225,7 @@ describe.skipIf(!hasFoundry)("MOHAR end to end (Anvil + API + SDK)", () => {
     const quote = await mohar.createQuote({ walletId: alice, side: "buy", amountPkr: "5000.00" });
 
     // The market jumps 1% between quote and execution.
-    const moved = await fetch(`${apiBase()}/dev/price`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ xauUsd: "4662.16" }),
-    });
+    const moved = await devPrice("/dev/price", DEV_KEY, { xauUsd: "4662.16" });
     expect(moved.status).toBe(200);
 
     const txn = await settle(await mohar.mint({ quoteId: quote.id }));
@@ -216,12 +237,22 @@ describe.skipIf(!hasFoundry)("MOHAR end to end (Anvil + API + SDK)", () => {
     expect((await mohar.getReserve()).fullyBacked).toBe(true);
   });
 
+  it("lets only the operator move the price, and only within the band", async () => {
+    // A partner trades at this price, so its key must not be able to set it.
+    const asPartner = await devPrice("/dev/price", API_KEY, { xauUsd: "4662.16" });
+    expect(asPartner.status).toBe(401);
+    expect((await devPrice("/dev/price/reset", API_KEY, {})).status).toBe(401);
+
+    // $100 gold would let Rs 25,000 buy 28 g. The band (5% of the deploy-time price) stops it.
+    const absurd = await devPrice("/dev/price", DEV_KEY, { xauUsd: "100.00" });
+    expect(absurd.status).toBe(400);
+    const { error } = (await absurd.json()) as { error: { details: Record<string, unknown> } };
+    expect(error.details).toEqual({ referenceXauUsd: "4616.00", bandPercent: 5 });
+    expect((await mohar.getPrice()).xauUsd).toBe("4662.16"); // unchanged by the refused calls
+  });
+
   it("resets the demo price to the one the feed was deployed with", async () => {
-    const reset = await fetch(`${apiBase()}/dev/price/reset`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${API_KEY}`, "Content-Type": "application/json" },
-      body: "{}",
-    });
+    const reset = await devPrice("/dev/price/reset", DEV_KEY, {});
     expect(reset.status).toBe(200);
     expect(((await reset.json()) as { xauUsd: string }).xauUsd).toBe("4616.00");
     expect((await mohar.getPrice()).xauUsd).toBe("4616.00");
@@ -236,6 +267,14 @@ describe.skipIf(!hasFoundry)("MOHAR end to end (Anvil + API + SDK)", () => {
 
   function apiBase(): string {
     return `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
+  }
+
+  function devPrice(path: string, key: string, body: Record<string, string>): Promise<Response> {
+    return fetch(`${apiBase()}${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
   }
 });
 
