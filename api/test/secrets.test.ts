@@ -12,8 +12,16 @@ const SECRET_B = "whsec_bbbbbbbbbbbbbbbbbbbbbbbbbb";
 const DEV_KEY = "mk_dev_cccccccccccccccccccccccc";
 const URLS = "bank-a=https://a.example/hooks,bank-b=https://b.example/hooks";
 
-function check(directory: PartnerDirectory, dev: { devRoutes: boolean; devApiKey?: string }) {
-  return findWeakSecrets({ apiKeys: directory.apiKeys(), partners: directory.all(), ...dev });
+function check(
+  directory: PartnerDirectory,
+  dev: { devRoutes: boolean; devApiKey?: string; kycHashSecret?: string | undefined },
+) {
+  return findWeakSecrets({
+    apiKeys: directory.apiKeys(),
+    partners: directory.all(),
+    kycHashSecret: "kyc_dddddddddddddddddddddddd",
+    ...dev,
+  });
 }
 
 describe("secrets off the local chain", () => {
@@ -70,6 +78,19 @@ describe("secrets off the local chain", () => {
     expect(check(directory, { devRoutes: true, devApiKey: KEY_A })).toEqual([
       "DEV_API_KEY: must differ from every partner API key",
     ]);
+  });
+});
+
+describe("KYC fingerprint secret", () => {
+  const directory = new PartnerDirectory(`${KEY_A}=bank-a`, "", "");
+
+  it("is required, and the repo's default is refused", () => {
+    expect(check(directory, { devRoutes: false, kycHashSecret: undefined })).toEqual([
+      expect.stringMatching(/^KYC_HASH_SECRET: required/),
+    ]);
+    expect(check(directory, { devRoutes: false, kycHashSecret: LOCAL_ONLY.kycHashSecret })).toEqual(
+      [expect.stringMatching(/^KYC_HASH_SECRET: is the repo's local default/)],
+    );
   });
 });
 

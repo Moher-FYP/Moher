@@ -8,12 +8,14 @@ export const LOCAL_ONLY = {
   partnerApiKeys: "mk_test_local=demo-bank",
   webhookSecret: "whsec_local_dev_only",
   devApiKey: "mk_dev_local",
+  kycHashSecret: "kyc_local_dev_only",
 } as const;
 
 const KNOWN_TO_EVERYONE = new Set<string>([
   "mk_test_local",
   LOCAL_ONLY.webhookSecret,
   LOCAL_ONLY.devApiKey,
+  LOCAL_ONLY.kycHashSecret,
 ]);
 
 /** Shortest secret accepted off the local chain. `openssl rand -hex 24` gives 48 characters. */
@@ -26,6 +28,8 @@ export interface SecretsInUse {
   /** The key for /dev routes, when those routes are on. */
   devApiKey?: string | undefined;
   devRoutes: boolean;
+  /** Keys the on-chain KYC fingerprints (domain/kyc.ts). */
+  kycHashSecret?: string | undefined;
 }
 
 /**
@@ -64,6 +68,13 @@ export function findWeakSecrets(inUse: SecretsInUse): string[] {
       );
     }
     secretOwners.set(partner.webhookSecret, partner.slug);
+  }
+
+  if (!inUse.kycHashSecret) {
+    problems.push("KYC_HASH_SECRET: required. It keeps on-chain KYC fingerprints unguessable");
+  } else {
+    const reason = weak(inUse.kycHashSecret);
+    if (reason) problems.push(`KYC_HASH_SECRET: ${reason}`);
   }
 
   if (inUse.devRoutes) {

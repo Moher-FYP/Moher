@@ -1,4 +1,4 @@
-import type { Address } from "viem";
+import type { Address, Hex } from "viem";
 import type { MoharChain } from "./chain/mohar-chain.js";
 import type { FeeRates } from "./domain/pricing.js";
 import type { PartnerDirectory } from "./http/auth.js";
@@ -20,6 +20,8 @@ export interface AppContext {
   queue: SerialQueue;
   /** Custodial address for the n-th customer wallet. */
   deriveWalletAddress: (index: number) => Address;
+  /** The on-chain fingerprint of a partner's KYC reference (domain/kyc.ts). */
+  kycFingerprint: (partnerSlug: string, reference: string) => Hex;
   settings: {
     fees: FeeRates;
     quoteTtlSeconds: number;

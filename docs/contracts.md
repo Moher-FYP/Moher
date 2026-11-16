@@ -56,7 +56,7 @@ attestor key and 3-of-5 for admin; in the prototype this is documented as a prod
 | Frozen wallet    | cannot mint, burn or transfer until unfrozen                                   |
 
 KYC/AML of customers is the partner institution's responsibility. The registry stores only
-`kycAttestationHash = keccak256(partner KYC reference)` — no personal data on-chain
+`kycAttestationHash = HMAC-SHA256(MOHAR's KYC secret, partner slug + KYC reference)` — no personal data on-chain, and not reversible by guessing the reference
 (FYP-1 §3.5.3, data minimisation).
 
 ## Mint (and burn) sequence

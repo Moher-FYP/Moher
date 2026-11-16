@@ -1,5 +1,4 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { keccak256, toHex } from "viem";
 import { z } from "zod";
 import { mapChainError } from "../chain/errors.js";
 import type { AppContext } from "../context.js";
@@ -215,7 +214,7 @@ export function partnerRoutes(ctx: AppContext): Router {
 
       const index = ctx.store.nextDerivationIndex();
       const address = ctx.deriveWalletAddress(index);
-      const kycAttestationHash = keccak256(toHex(body.kyc.reference));
+      const kycAttestationHash = ctx.kycFingerprint(partner.slug, body.kyc.reference);
       try {
         await ctx.chain.registerWallet(address, partner.partnerId, kycAttestationHash);
       } catch (error) {

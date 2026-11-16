@@ -1,8 +1,10 @@
 import request from "supertest";
+import { keccak256, toHex } from "viem";
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import type { MoharChain } from "../src/chain/mohar-chain.js";
 import type { AppContext } from "../src/context.js";
+import { kycFingerprint } from "../src/domain/kyc.js";
 import { PartnerDirectory } from "../src/http/auth.js";
 import { SerialQueue } from "../src/lib/queue.js";
 import { Store } from "../src/store/store.js";
@@ -34,6 +36,8 @@ function fakeContext(
     partners: new PartnerDirectory(`${API_KEY}=demo-bank`, ""),
     deriveWalletAddress: (i: number) =>
       `0x${(i + 1).toString(16).padStart(40, "0")}` as `0x${string}`,
+    kycFingerprint: (slug: string, reference: string) =>
+      kycFingerprint("unit-test-kyc-secret", slug, reference),
     settings: {
       fees: { platformFeeBps: 50n, fxMarginBps: 25n },
       quoteTtlSeconds: 60,
@@ -142,6 +146,17 @@ describe("wallet registration and idempotency", () => {
     const [, , kycHash] = registerWallet.mock.calls[0] as unknown as [string, string, string];
     expect(kycHash).toMatch(/^0x[0-9a-f]{64}$/);
     expect(kycHash).not.toContain("cust-2");
+    // Not the plain hash of the reference: that could be reversed by guessing the reference.
+    expect(kycHash).not.toBe(keccak256(toHex("kyc-cust-2")));
+  });
+
+  it("makes KYC fingerprints depend on the secret and the partner", () => {
+    const cnic = "3520212345671";
+    const fingerprint = kycFingerprint("secret-one", "bank-a", cnic);
+    expect(fingerprint).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(kycFingerprint("secret-one", "bank-a", cnic)).toBe(fingerprint); // repeatable
+    expect(kycFingerprint("secret-two", "bank-a", cnic)).not.toBe(fingerprint);
+    expect(kycFingerprint("secret-one", "bank-b", cnic)).not.toBe(fingerprint);
   });
 
   it("requires an Idempotency-Key and replays or rejects reuse", async () => {

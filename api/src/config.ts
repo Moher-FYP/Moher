@@ -28,6 +28,11 @@ const ConfigSchema = z.object({
   /** Custodial customer wallets are derived from this mnemonic (m/44'/60'/1'/0/i). */
   WALLET_MNEMONIC: z.string().optional(),
 
+  /**
+   * Keys the KYC fingerprint written on-chain with each wallet (domain/kyc.ts). Keep it for as
+   * long as wallets exist: without it a fingerprint can no longer be matched to a reference.
+   */
+  KYC_HASH_SECRET: z.string().min(8).optional(),
   USD_PKR_RATE: z
     .string()
     .regex(/^\d+(\.\d{1,4})?$/)

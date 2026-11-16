@@ -7,6 +7,7 @@ import { MoharChain } from "./chain/mohar-chain.js";
 import { ChainlinkReferenceFeed } from "./chain/reference-feed.js";
 import { ANVIL_DEFAULTS, type Config } from "./config.js";
 import type { AppContext } from "./context.js";
+import { kycFingerprint } from "./domain/kyc.js";
 import { PartnerDirectory } from "./http/auth.js";
 import { toApiTransaction } from "./http/presenters.js";
 import { findWeakSecrets, LOCAL_ONLY } from "./secrets.js";
@@ -49,12 +50,14 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   );
   const devRoutes = config.ENABLE_DEV_ROUTES ? config.ENABLE_DEV_ROUTES === "true" : local;
   const devApiKey = config.DEV_API_KEY ?? (local ? LOCAL_ONLY.devApiKey : undefined);
+  const kycHashSecret = config.KYC_HASH_SECRET ?? (local ? LOCAL_ONLY.kycHashSecret : undefined);
   if (!local) {
     const problems = findWeakSecrets({
       apiKeys: partners.apiKeys(),
       partners: partners.all(),
       devApiKey,
       devRoutes,
+      kycHashSecret,
     });
     if (problems.length > 0) {
       throw new Error(
@@ -141,6 +144,8 @@ export async function bootstrap(config: Config): Promise<AppContext> {
     queue,
     deriveWalletAddress: (index) =>
       mnemonicToAccount(mnemonic, { accountIndex: 1, addressIndex: index }).address,
+    kycFingerprint: (partnerSlug, reference) =>
+      kycFingerprint(kycHashSecret ?? LOCAL_ONLY.kycHashSecret, partnerSlug, reference),
     settings: {
       fees: {
         platformFeeBps: BigInt(config.PLATFORM_FEE_BPS),
