@@ -87,6 +87,7 @@ POST /v1/mints ─▶ checks (quote valid, wallet active, minting not paused) �
 | Settlement  | `src/services/settlement.ts` | Async worker on a serial queue (single relayer nonce). Publishes the reserve after every confirmed trade.                                                                                     |
 | Chain       | `src/chain/mohar-chain.ts`   | viem. ABIs in `abis.ts` are generated from Foundry output — `pnpm --filter @mohar/api abi`.                                                                                                   |
 | Idempotency | `src/http/idempotency.ts`    | Same key + body replays the response; a different body is a 409.                                                                                                                              |
+| Quotes      | `src/http/routes.ts`         | One quote settles once. `claimQuote` re-checks the quote and marks it used with no `await` in between, so two requests arriving together cannot both execute it; the second gets a 409.       |
 | Store       | `src/store/store.ts`         | JSON file in `api/.data/`, reset automatically when the local chain restarts. Swap for Postgres before a real deployment.                                                                     |
 | Webhooks    | `src/services/webhooks.ts`   | Signed with the SDK's own helper; 3 attempts.                                                                                                                                                 |
 

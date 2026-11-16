@@ -5,7 +5,7 @@ import { mapChainError } from "../chain/errors.js";
 import type { AppContext } from "../context.js";
 import { formatGrams, formatPkr, parseDecimal, parseGrams, parsePkr } from "../domain/money.js";
 import { computeQuote, valuePaisa, type QuoteAmount } from "../domain/pricing.js";
-import type { QuoteRecord, WalletRecord } from "../domain/types.js";
+import type { QuoteRecord, TransactionRecord, WalletRecord } from "../domain/types.js";
 import { ApiError } from "../errors.js";
 import { newId } from "../lib/ids.js";
 import { holdingRef } from "../vault/mock-vault.js";
@@ -119,6 +119,27 @@ export function partnerRoutes(ctx: AppContext): Router {
       throw new ApiError(409, "quote_expired", "The quote expired. Request a new one.");
     }
     return quote;
+  }
+
+  /**
+   * Checks a quote and marks it used in one uninterrupted step, so one quote settles once.
+   *
+   * A handler's first usableQuote() check is followed by `await`s (chain reads), and while it
+   * waits a second request for the same quote can pass the same check. So the check is repeated
+   * here, and nothing between it and saveQuote() waits: Node runs this block to the end before
+   * it looks at any other request. `start` must therefore be synchronous (settlement.start*
+   * only records the transaction and queues the on-chain work).
+   */
+  function claimQuote(
+    res: Response,
+    id: string,
+    side: "buy" | "sell",
+    start: (quote: QuoteRecord) => TransactionRecord,
+  ): TransactionRecord {
+    const quote = usableQuote(res, id, side);
+    const txn = start(quote);
+    ctx.store.saveQuote({ ...quote, usedByTransactionId: txn.id });
+    return txn;
   }
 
   // ---------------------------------------------------------------- public
@@ -280,8 +301,9 @@ export function partnerRoutes(ctx: AppContext): Router {
     if (await ctx.chain.mintingPaused()) {
       throw new ApiError(409, "minting_paused", "Minting is paused");
     }
-    const txn = ctx.settlement.startMint(partnerOf(res), quote, wallet);
-    ctx.store.saveQuote({ ...quote, usedByTransactionId: txn.id });
+    const txn = claimQuote(res, id, "buy", (claimed) =>
+      ctx.settlement.startMint(partnerOf(res), claimed, wallet),
+    );
     res.status(202).json(present(txn));
   });
 
@@ -291,8 +313,9 @@ export function partnerRoutes(ctx: AppContext): Router {
     const wallet = ownWallet(res, quote.walletId);
     await requireActive(wallet);
     await requireBalance(wallet, BigInt(quote.grams));
-    const txn = ctx.settlement.startBurn(partnerOf(res), quote, wallet);
-    ctx.store.saveQuote({ ...quote, usedByTransactionId: txn.id });
+    const txn = claimQuote(res, id, "sell", (claimed) =>
+      ctx.settlement.startBurn(partnerOf(res), claimed, wallet),
+    );
     res.status(202).json(present(txn));
   });
 

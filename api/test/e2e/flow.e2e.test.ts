@@ -15,6 +15,7 @@ import { createApp } from "../../src/app.js";
 import { bootstrap } from "../../src/bootstrap.js";
 import { loadConfig } from "../../src/config.js";
 import type { AppContext } from "../../src/context.js";
+import { parseGrams } from "../../src/domain/money.js";
 
 /**
  * The FYP demo flow, end to end, exactly as a partner bank would run it:
@@ -141,6 +142,27 @@ describe.skipIf(!hasFoundry)("MOHAR end to end (Anvil + API + SDK)", () => {
     const second = await mohar.mint({ quoteId: quote.id }, { idempotencyKey: "order-dup-1" });
     expect(second.id).toBe(first.id);
     await settle(first);
+  });
+
+  it("settles a quote once when two requests for it arrive together", async () => {
+    const before = parseGrams((await mohar.getBalance(alice)).grams);
+    const quote = await mohar.createQuote({ walletId: alice, side: "buy", amountPkr: "2000.00" });
+
+    // Different Idempotency-Keys, so the replay protection above does not apply: only the
+    // quote itself can stop the second request.
+    const results = await Promise.allSettled([
+      mohar.mint({ quoteId: quote.id }, { idempotencyKey: "order-race-a" }),
+      mohar.mint({ quoteId: quote.id }, { idempotencyKey: "order-race-b" }),
+    ]);
+    const accepted = results.filter((r) => r.status === "fulfilled");
+    const refused = results.filter((r) => r.status === "rejected");
+    expect(accepted).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(refused[0]!.reason).toMatchObject({ status: 409 });
+
+    expect((await settle(accepted[0]!.value)).status).toBe("confirmed");
+    const after = parseGrams((await mohar.getBalance(alice)).grams);
+    expect(after - before).toBe(parseGrams(quote.grams));
   });
 
   it("sends a signed webhook the bank can verify with the SDK", async () => {

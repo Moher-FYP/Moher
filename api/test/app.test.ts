@@ -81,6 +81,15 @@ describe("health and errors", () => {
     expect(bad.status).toBe(400);
     expect(bad.body.error.code).toBe("invalid_request");
   });
+
+  it("answers 413, not 500, when the body is over the size limit", async () => {
+    const res = await request(createApp(fakeContext().ctx))
+      .post("/v1/quotes")
+      .set("Authorization", `Bearer ${API_KEY}`)
+      .send({ padding: "a".repeat(200_000) });
+    expect(res.status).toBe(413);
+    expect(res.body.error.code).toBe("invalid_request");
+  });
 });
 
 describe("auth", () => {
