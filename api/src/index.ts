@@ -7,9 +7,9 @@ const config = loadConfig();
 try {
   const ctx = await bootstrap(config);
   const app = createApp(ctx);
-  app.listen(config.PORT, () => {
+  app.listen(config.PORT, config.HOST, () => {
     const d = ctx.chain.deployment;
-    console.log(`MOHAR API listening on http://localhost:${config.PORT}`);
+    console.log(`MOHAR API listening on http://${config.HOST}:${config.PORT}`);
     console.log(
       `  chain ${d.chainId} · token ${d.moharToken} · price feed ${d.mockFeed ? "mock" : "Chainlink"}`,
     );

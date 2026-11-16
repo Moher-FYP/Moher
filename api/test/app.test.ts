@@ -10,7 +10,10 @@ import { Store } from "../src/store/store.js";
 const API_KEY = "mk_test_unit";
 
 /** Just enough of the context for HTTP-level tests; on-chain flows are covered by e2e.test.ts. */
-function fakeContext(chainOverrides: Partial<Record<keyof MoharChain, unknown>> = {}) {
+function fakeContext(
+  chainOverrides: Partial<Record<keyof MoharChain, unknown>> = {},
+  limits: { requestsPerMinute?: number; walletRegistrationsPerHour?: number } = {},
+) {
   const store = new Store(null);
   store.open("unit");
   const registerWallet = vi.fn(async () => ({ hash: "0x01", blockNumber: 1n }));
@@ -34,7 +37,10 @@ function fakeContext(chainOverrides: Partial<Record<keyof MoharChain, unknown>> 
     settings: {
       fees: { platformFeeBps: 50n, fxMarginBps: 25n },
       quoteTtlSeconds: 60,
+      requestsPerMinute: limits.requestsPerMinute ?? 600,
+      walletRegistrationsPerHour: limits.walletRegistrationsPerHour ?? 120,
       devRoutes: false,
+      devPriceBandBps: 500n,
     },
   } as unknown as AppContext;
   return { ctx, registerWallet };
@@ -169,5 +175,45 @@ describe("wallet registration and idempotency", () => {
       .send({ externalCustomerId: "x", kyc: { reference: "r", level: "gold", verifiedAt: "no" } });
     expect(res.status).toBe(400);
     expect(res.body.error.message).toMatch(/kyc\.level/);
+  });
+});
+
+describe("request limits", () => {
+  it("answers 429 with Retry-After once a partner passes its requests per minute", async () => {
+    const app = createApp(fakeContext({}, { requestsPerMinute: 3 }).ctx);
+    const call = () =>
+      request(app).get("/v1/wallets/wal_x").set("Authorization", `Bearer ${API_KEY}`);
+    for (let i = 0; i < 3; i++) expect((await call()).status).toBe(404); // counted, then handled
+    const limited = await call();
+    expect(limited.status).toBe(429);
+    expect(limited.body.error.code).toBe("rate_limited");
+    expect(Number(limited.headers["retry-after"])).toBeGreaterThan(0);
+  });
+
+  it("does not count requests that fail authentication against a partner", async () => {
+    const app = createApp(fakeContext({}, { requestsPerMinute: 1 }).ctx);
+    for (let i = 0; i < 3; i++) {
+      const res = await request(app).get("/v1/price").set("Authorization", "Bearer mk_nope");
+      expect(res.status).toBe(401);
+    }
+  });
+
+  it("limits new wallets per hour, but not lookups of existing ones", async () => {
+    const { ctx, registerWallet } = fakeContext({}, { walletRegistrationsPerHour: 2 });
+    const app = createApp(ctx);
+    const register = (customer: string, key: string) =>
+      request(app)
+        .post("/v1/wallets")
+        .set("Authorization", `Bearer ${API_KEY}`)
+        .set("Idempotency-Key", key)
+        .send(walletBody(customer));
+
+    expect((await register("c1", "register-c1-a")).status).toBe(201);
+    expect((await register("c2", "register-c2-a")).status).toBe(201);
+    expect((await register("c1", "register-c1-b")).status).toBe(200); // existing: free
+    const third = await register("c3", "register-c3-a");
+    expect(third.status).toBe(429);
+    expect(third.body.error.details.retryAfterSeconds).toBeGreaterThan(0);
+    expect(registerWallet).toHaveBeenCalledTimes(2); // the refused one never reached the chain
   });
 });

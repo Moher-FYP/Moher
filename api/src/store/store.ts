@@ -136,6 +136,13 @@ export class Store {
     };
   }
 
+  /** Transactions that never reached confirmed or failed, oldest first. */
+  unfinishedTransactions(): TransactionRecord[] {
+    return Object.values(this.state.transactions)
+      .filter((t) => t.status === "pending" || t.status === "submitted")
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
   // ---------------------------------------------------------------- idempotency
 
   getIdempotency(key: string): IdempotencyRecord | undefined {
@@ -145,6 +152,17 @@ export class Store {
   saveIdempotency(key: string, record: IdempotencyRecord): void {
     this.state.idempotency[key] = record;
     this.persist();
+  }
+
+  /**
+   * Forgets requests that were still running when the process stopped, so the client's retry
+   * with the same Idempotency-Key runs instead of answering "still running" forever.
+   */
+  clearInProgressIdempotency(): number {
+    const stuck = Object.entries(this.state.idempotency).filter(([, r]) => r.inProgress);
+    for (const [key] of stuck) delete this.state.idempotency[key];
+    if (stuck.length > 0) this.persist();
+    return stuck.length;
   }
 
   deleteIdempotency(key: string): void {

@@ -9,6 +9,11 @@ import { LOCAL_ONLY } from "./secrets.js";
  */
 const ConfigSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
+  /**
+   * The network interface to listen on. The default accepts connections from this machine
+   * only. Set 0.0.0.0 on a server, behind a proxy that provides HTTPS.
+   */
+  HOST: z.string().min(1).default("127.0.0.1"),
   RPC_URL: z.string().url().default("http://127.0.0.1:8545"),
   DEPLOYMENT_FILE: z.string().default("../contracts/deployments/31337.json"),
 
@@ -63,6 +68,10 @@ const ConfigSchema = z.object({
   /** Ignore a reference older than this. Four days covers a weekend plus a market holiday. */
   MIRROR_MAX_AGE_SECONDS: z.coerce.number().int().min(60).default(345_600),
 
+  /** Requests each partner may send per minute, across all routes. */
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(600),
+  /** New customer wallets each partner may register per hour. Each one costs the relayer gas. */
+  WALLET_REGISTRATIONS_PER_HOUR: z.coerce.number().int().min(1).default(120),
   /** Where the JSON store lives. ":memory:" keeps everything in memory (tests). */
   DATA_DIR: z.string().default(".data"),
   /** Enables /dev routes (move the mock gold price). Defaults to on for local chains. */

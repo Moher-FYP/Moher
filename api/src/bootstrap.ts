@@ -98,18 +98,36 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   const { reset } = store.open(await chain.chainMarker());
   if (reset) console.log("Started a fresh store for this chain.");
 
+  const queue = new SerialQueue();
+  const webhooks = new WebhookSender((txn) => toApiTransaction(txn, (h) => chain.explorerTxUrl(h)));
+  const settlement = new SettlementService(chain, vault, store, queue, webhooks);
+
+  // Finish what the previous run left unfinished, before the vault book is read and before
+  // any request is served.
+  const cleared = store.clearInProgressIdempotency();
+  const recovered = await settlement.recover((slug) => partners.get(slug));
+  if (cleared + recovered.confirmed + recovered.failed + recovered.stillWaiting > 0) {
+    console.log(
+      `Recovered after restart: ${recovered.confirmed} confirmed, ${recovered.failed} failed, ` +
+        `${recovered.stillWaiting} still waiting, ${cleared} interrupted request(s) cleared.`,
+    );
+  }
+
   // Rebuild the vault's allocation book from on-chain balances of known wallets.
   const holdings = await Promise.all(
     store.allWallets().map(async (w) => [w.address, await chain.balanceOf(w.address)] as const),
   );
   const latest = await chain.latestReserve();
   vault.load(holdings, latest?.attestation.nonce ?? 0n, latest?.attestation.asOf ?? 0n);
+  if (recovered.confirmed > 0) {
+    // A recovered trade changed the supply after the last reserve proof was published.
+    await queue
+      .run(() => settlement.publishReserve())
+      .catch((error: unknown) => console.error("Reserve publish failed:", errorMessage(error)));
+  }
 
-  const queue = new SerialQueue();
   const mirror = await mirrorOptions(config, deployment);
   const price = new PriceService(chain, queue, toE4(config.USD_PKR_RATE), mirror);
-  const webhooks = new WebhookSender((txn) => toApiTransaction(txn, (h) => chain.explorerTxUrl(h)));
-  const settlement = new SettlementService(chain, vault, store, queue, webhooks);
   if (mirror) await price.tick(); // start from the market price, not the deploy-time one
   price.startKeeper();
 
@@ -129,6 +147,8 @@ export async function bootstrap(config: Config): Promise<AppContext> {
         fxMarginBps: BigInt(config.FX_MARGIN_BPS),
       },
       quoteTtlSeconds: config.QUOTE_TTL_SECONDS,
+      requestsPerMinute: config.RATE_LIMIT_PER_MINUTE,
+      walletRegistrationsPerHour: config.WALLET_REGISTRATIONS_PER_HOUR,
       devRoutes,
       devApiKey,
       devPriceBandBps: BigInt(config.DEV_PRICE_BAND_BPS),

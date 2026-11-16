@@ -23,6 +23,10 @@ export interface AppContext {
   settings: {
     fees: FeeRates;
     quoteTtlSeconds: number;
+    /** Requests per partner per minute. */
+    requestsPerMinute: number;
+    /** New wallet registrations per partner per hour (each costs the relayer gas). */
+    walletRegistrationsPerHour: number;
     devRoutes: boolean;
     /** Operator key for /dev routes. Those routes are only mounted when it is set. */
     devApiKey?: string | undefined;

@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import { keccak256, toHex } from "viem";
 import { z } from "zod";
 import { mapChainError } from "../chain/errors.js";
@@ -19,6 +19,7 @@ import { PriceBandError } from "../services/price.js";
 import { holdingRef } from "../vault/mock-vault.js";
 import { partnerOf, requireOperator, requirePartner } from "./auth.js";
 import { idempotent } from "./idempotency.js";
+import { rateLimit, RateLimiter, tooManyRequests } from "./rate-limit.js";
 import { toApiPrice, toApiQuote, toApiTransaction, toApiWallet } from "./presenters.js";
 
 // ------------------------------------------------------------------ request schemas
@@ -79,7 +80,18 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
 
 export function partnerRoutes(ctx: AppContext): Router {
   const router = Router();
-  const auth = requirePartner(ctx.partners);
+  // Every partner route: a valid key, then that partner's request allowance.
+  const authenticate = requirePartner(ctx.partners);
+  const allowance = rateLimit(
+    new RateLimiter(ctx.settings.requestsPerMinute, 60_000),
+    (res) => partnerOf(res).slug,
+  );
+  const auth = (req: Request, res: Response, next: NextFunction): void => {
+    authenticate(req, res, (error?: unknown) => (error ? next(error) : allowance(req, res, next)));
+  };
+  // Registering a wallet is an on-chain transaction the relayer pays for, so it has its own,
+  // smaller allowance. Only new wallets count; returning an existing one is free.
+  const registrations = new RateLimiter(ctx.settings.walletRegistrationsPerHour, 3_600_000);
   const once = idempotent(ctx.store);
   const present = (txn: Parameters<typeof toApiTransaction>[0]) =>
     toApiTransaction(txn, (h) => ctx.chain.explorerTxUrl(h));
@@ -198,6 +210,8 @@ export function partnerRoutes(ctx: AppContext): Router {
     const result = await ctx.queue.run(async () => {
       const existing = ctx.store.findWalletByCustomer(partner.slug, body.externalCustomerId);
       if (existing) return { wallet: existing, created: false };
+      const wait = registrations.take(partner.slug);
+      if (wait > 0) throw tooManyRequests(res, wait, "new wallets this hour");
 
       const index = ctx.store.nextDerivationIndex();
       const address = ctx.deriveWalletAddress(index);

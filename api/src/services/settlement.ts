@@ -11,6 +11,14 @@ import type { WebhookSender } from "./webhooks.js";
 /** How long a vault receipt stays valid on-chain after it is signed. */
 const ATTESTATION_TTL_SECONDS = 300n;
 
+/** What recover() did with the trades the previous run left unfinished. */
+export interface RecoverySummary {
+  confirmed: number;
+  failed: number;
+  /** Sent, but still without a receipt: left as "submitted" for the next start to check. */
+  stillWaiting: number;
+}
+
 /**
  * Turns accepted requests into on-chain settlement. HTTP handlers call start*() and return
  * 202 immediately; the work runs on the relayer queue, one transaction at a time:
@@ -104,6 +112,60 @@ export class SettlementService {
     const attestation = this.vault.nextAttestation(await this.chain.latestBlockTimestamp());
     const signature = await this.vault.signReserve(attestation);
     return this.chain.publishReserve(attestation, signature);
+  }
+
+  /**
+   * After a restart, finishes the trades the previous run left unfinished. The work queue lives
+   * in memory, so without this a trade caught mid-flight would stay "pending" forever.
+   *
+   *   never sent (no hash)   → failed. Nothing reached the chain; the partner requotes.
+   *   sent, receipt found    → confirmed or failed, as the chain says.
+   *   sent, no receipt yet   → left alone. It may still be mined, so calling it failed could
+   *                            be wrong; the next start checks again.
+   *
+   * Partners get the usual webhook for every trade this settles. Call before serving requests.
+   */
+  async recover(
+    partnerOf: (slug: string) => Partner | undefined,
+    waitMs = 60_000,
+  ): Promise<RecoverySummary> {
+    const summary: RecoverySummary = { confirmed: 0, failed: 0, stillWaiting: 0 };
+    for (const txn of this.store.unfinishedTransactions()) {
+      const partner = partnerOf(txn.partnerSlug);
+      if (!txn.txHash) {
+        const failed = this.store.updateTransaction(txn.id, {
+          status: "failed",
+          failureCode: "internal_error",
+          failureMessage:
+            "Interrupted by a restart before it was sent. Nothing happened on-chain. Request a new quote.",
+        });
+        summary.failed++;
+        if (partner) this.webhooks.send(partner, "transaction.failed", failed);
+        continue;
+      }
+      const outcome = await this.chain.waitForOutcome(txn.txHash, waitMs);
+      if (!outcome) {
+        console.warn(`Transaction ${txn.id} (${txn.txHash}) has no receipt yet; left as submitted`);
+        summary.stillWaiting++;
+      } else if (outcome.succeeded) {
+        const confirmed = this.store.updateTransaction(txn.id, {
+          status: "confirmed",
+          blockNumber: Number(outcome.blockNumber),
+          confirmedAt: new Date().toISOString(),
+        });
+        summary.confirmed++;
+        if (partner) this.webhooks.send(partner, "transaction.confirmed", confirmed);
+      } else {
+        const failed = this.store.updateTransaction(txn.id, {
+          status: "failed",
+          failureCode: "internal_error",
+          failureMessage: "The transaction reverted on-chain.",
+        });
+        summary.failed++;
+        if (partner) this.webhooks.send(partner, "transaction.failed", failed);
+      }
+    }
+    return summary;
   }
 
   /** Waits for all queued settlement work (tests, graceful shutdown). */
