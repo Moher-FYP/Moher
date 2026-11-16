@@ -61,6 +61,12 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # Fails on a known high or critical flaw in anything the apps ship. A new advisory can
+      # turn this red on an unrelated change: fix it with `pnpm up` (or an override in
+      # pnpm-workspace.yaml) in its own pull request.
+      - name: Audit dependencies
+        run: pnpm audit --prod --audit-level high
+
       - name: Format
         run: pnpm format:check
 
