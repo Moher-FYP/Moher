@@ -64,10 +64,11 @@ export function DevPanel() {
     setPriceError(undefined);
     startTransition(async () => {
       try {
-        await moveGoldPrice(form);
+        const refused = await moveGoldPrice(form);
+        if (refused) setPriceError(refused);
         router.refresh();
       } catch {
-        setPriceError("Price control needs the local chain with the mock price feed.");
+        setPriceError("Could not reach MOHAR to change the price.");
       }
     });
   };

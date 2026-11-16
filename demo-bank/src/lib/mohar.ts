@@ -33,3 +33,12 @@ export function moharApiUrl(): string {
 export function moharApiKey(): string {
   return process.env.MOHAR_API_KEY ?? "mk_test_local";
 }
+
+/**
+ * MOHAR's operator key for the demo price controls. It is not the bank's API key: a partner
+ * cannot move the price it trades at. A real bank would never hold this; the demo panel does so
+ * one screen can show both sides.
+ */
+export function moharDevKey(): string {
+  return process.env.MOHAR_DEV_KEY ?? "mk_dev_local";
+}

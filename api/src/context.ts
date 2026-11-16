@@ -24,5 +24,9 @@ export interface AppContext {
     fees: FeeRates;
     quoteTtlSeconds: number;
     devRoutes: boolean;
+    /** Operator key for /dev routes. Those routes are only mounted when it is set. */
+    devApiKey?: string | undefined;
+    /** How far a manual price may sit from the reference price (500 = 5%). */
+    devPriceBandBps: bigint;
   };
 }

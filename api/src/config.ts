@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { LOCAL_ONLY } from "./secrets.js";
 
 /**
  * API configuration. Every variable has a safe local default, so `pnpm --filter @mohar/api dev`
@@ -30,11 +31,20 @@ const ConfigSchema = z.object({
   FX_MARGIN_BPS: z.coerce.number().int().min(0).max(25).default(25),
   QUOTE_TTL_SECONDS: z.coerce.number().int().min(10).max(600).default(60),
 
-  /** Comma-separated `apiKey=partnerSlug` pairs. */
-  PARTNER_API_KEYS: z.string().default("mk_test_local=demo-bank"),
+  /**
+   * Comma-separated `apiKey=partnerSlug` pairs. The default is public (it is in this repo), so
+   * bootstrap refuses it on any chain but local Anvil — see secrets.ts.
+   */
+  PARTNER_API_KEYS: z.string().default(LOCAL_ONLY.partnerApiKeys),
   /** Comma-separated `partnerSlug=https://...` pairs. */
   PARTNER_WEBHOOK_URLS: z.string().default("demo-bank=http://localhost:3000/api/mohar/webhooks"),
-  WEBHOOK_SECRET: z.string().min(8).default("whsec_local_dev_only"),
+  /**
+   * Comma-separated `partnerSlug=secret` pairs: each partner's own webhook signing secret, so
+   * one partner cannot forge an event to another. Required off local Anvil.
+   */
+  PARTNER_WEBHOOK_SECRETS: z.string().default(""),
+  /** Local Anvil only: signs webhooks for partners with no entry in PARTNER_WEBHOOK_SECRETS. */
+  WEBHOOK_SECRET: z.string().min(8).default(LOCAL_ONLY.webhookSecret),
 
   /**
    * Testnet only: make the mock gold feed follow a real Chainlink XAU/USD feed on another
@@ -57,6 +67,13 @@ const ConfigSchema = z.object({
   DATA_DIR: z.string().default(".data"),
   /** Enables /dev routes (move the mock gold price). Defaults to on for local chains. */
   ENABLE_DEV_ROUTES: z.enum(["true", "false"]).optional(),
+  /**
+   * The operator key for /dev routes. Partner keys cannot move the price. Local Anvil falls
+   * back to a public default; elsewhere it must be set when ENABLE_DEV_ROUTES=true.
+   */
+  DEV_API_KEY: z.string().min(8).optional(),
+  /** A manual price must stay within this distance of the reference price (500 = 5%). */
+  DEV_PRICE_BAND_BPS: z.coerce.number().int().min(1).max(1_000).default(500),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

@@ -9,6 +9,7 @@ import { ANVIL_DEFAULTS, type Config } from "./config.js";
 import type { AppContext } from "./context.js";
 import { PartnerDirectory } from "./http/auth.js";
 import { toApiTransaction } from "./http/presenters.js";
+import { findWeakSecrets, LOCAL_ONLY } from "./secrets.js";
 import { SerialQueue } from "./lib/queue.js";
 import { PriceService, type MirrorOptions } from "./services/price.js";
 import { SettlementService } from "./services/settlement.js";
@@ -37,6 +38,30 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   );
   const mnemonic = config.WALLET_MNEMONIC ?? (local ? ANVIL_DEFAULTS.walletMnemonic : undefined);
   if (!mnemonic) throw new Error("WALLET_MNEMONIC is required outside local Anvil");
+
+  // The repo's default API key, webhook secret and operator key are public. Off local Anvil,
+  // refuse to start with them (or with anything short or shared) before touching the chain.
+  const partners = new PartnerDirectory(
+    config.PARTNER_API_KEYS,
+    config.PARTNER_WEBHOOK_URLS,
+    config.PARTNER_WEBHOOK_SECRETS,
+    config.WEBHOOK_SECRET,
+  );
+  const devRoutes = config.ENABLE_DEV_ROUTES ? config.ENABLE_DEV_ROUTES === "true" : local;
+  const devApiKey = config.DEV_API_KEY ?? (local ? LOCAL_ONLY.devApiKey : undefined);
+  if (!local) {
+    const problems = findWeakSecrets({
+      apiKeys: partners.apiKeys(),
+      partners: partners.all(),
+      devApiKey,
+      devRoutes,
+    });
+    if (problems.length > 0) {
+      throw new Error(
+        `These secrets are not safe outside local Anvil:\n  - ${problems.join("\n  - ")}\n  Generate each with: openssl rand -hex 24`,
+      );
+    }
+  }
 
   const chain = new MoharChain(deployment, config.RPC_URL, relayerKey);
   const rpcChainId = await chain.getChainId().catch(() => {
@@ -83,9 +108,7 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   const queue = new SerialQueue();
   const mirror = await mirrorOptions(config, deployment);
   const price = new PriceService(chain, queue, toE4(config.USD_PKR_RATE), mirror);
-  const webhooks = new WebhookSender(config.WEBHOOK_SECRET, (txn) =>
-    toApiTransaction(txn, (h) => chain.explorerTxUrl(h)),
-  );
+  const webhooks = new WebhookSender((txn) => toApiTransaction(txn, (h) => chain.explorerTxUrl(h)));
   const settlement = new SettlementService(chain, vault, store, queue, webhooks);
   if (mirror) await price.tick(); // start from the market price, not the deploy-time one
   price.startKeeper();
@@ -96,7 +119,7 @@ export async function bootstrap(config: Config): Promise<AppContext> {
     vault,
     price,
     settlement,
-    partners: new PartnerDirectory(config.PARTNER_API_KEYS, config.PARTNER_WEBHOOK_URLS),
+    partners,
     queue,
     deriveWalletAddress: (index) =>
       mnemonicToAccount(mnemonic, { accountIndex: 1, addressIndex: index }).address,
@@ -106,7 +129,9 @@ export async function bootstrap(config: Config): Promise<AppContext> {
         fxMarginBps: BigInt(config.FX_MARGIN_BPS),
       },
       quoteTtlSeconds: config.QUOTE_TTL_SECONDS,
-      devRoutes: config.ENABLE_DEV_ROUTES ? config.ENABLE_DEV_ROUTES === "true" : local,
+      devRoutes,
+      devApiKey,
+      devPriceBandBps: BigInt(config.DEV_PRICE_BAND_BPS),
     },
   };
 }

@@ -3,13 +3,21 @@ import { keccak256, toHex } from "viem";
 import { z } from "zod";
 import { mapChainError } from "../chain/errors.js";
 import type { AppContext } from "../context.js";
-import { formatGrams, formatPkr, parseDecimal, parseGrams, parsePkr } from "../domain/money.js";
+import {
+  formatDecimal,
+  formatGrams,
+  formatPkr,
+  parseDecimal,
+  parseGrams,
+  parsePkr,
+} from "../domain/money.js";
 import { computeQuote, valuePaisa, type QuoteAmount } from "../domain/pricing.js";
 import type { QuoteRecord, TransactionRecord, WalletRecord } from "../domain/types.js";
 import { ApiError } from "../errors.js";
 import { newId } from "../lib/ids.js";
+import { PriceBandError } from "../services/price.js";
 import { holdingRef } from "../vault/mock-vault.js";
-import { partnerOf, requirePartner } from "./auth.js";
+import { partnerOf, requireOperator, requirePartner } from "./auth.js";
 import { idempotent } from "./idempotency.js";
 import { toApiPrice, toApiQuote, toApiTransaction, toApiWallet } from "./presenters.js";
 
@@ -354,17 +362,36 @@ export function partnerRoutes(ctx: AppContext): Router {
     res.json(present(txn));
   });
 
-  // ---------------------------------------------------------------- dev (local demo only)
+  // ---------------------------------------------------------------- dev (demo only)
 
-  if (ctx.settings.devRoutes && ctx.chain.deployment.mockFeed) {
-    /** Move the mock gold price, e.g. to demo a trade rejected for moving > 0.50%. */
-    router.post("/dev/price", auth, async (req, res) => {
+  // Mounted only with the mock feed and an operator key. A partner key is refused here: the
+  // party that trades must not be able to set the price it trades at.
+  if (ctx.settings.devRoutes && ctx.chain.deployment.mockFeed && ctx.settings.devApiKey) {
+    const operator = requireOperator(ctx.settings.devApiKey);
+
+    /**
+     * Move the mock gold price, e.g. to demo a trade rejected for moving > 0.50%. The new price
+     * must stay within the configured band of the reference price.
+     */
+    router.post("/dev/price", operator, async (req, res) => {
       const body = parse(DevPriceBody, req.body);
-      res.json(toApiPrice(await ctx.price.setMockPrice(parseDecimal(body.xauUsd, 8))));
+      try {
+        const price = await ctx.price.setMockPrice(
+          parseDecimal(body.xauUsd, 8),
+          ctx.settings.devPriceBandBps,
+        );
+        res.json(toApiPrice(price));
+      } catch (error) {
+        if (!(error instanceof PriceBandError)) throw error;
+        throw new ApiError(400, "invalid_request", error.message, {
+          referenceXauUsd: formatDecimal(error.referenceE8 / 10n ** 6n, 2),
+          bandPercent: Number(error.bandBps) / 100,
+        });
+      }
     });
 
     /** Undo manual moves: back to the mirrored market price, or the deploy-time price. */
-    router.post("/dev/price/reset", auth, async (_req, res) => {
+    router.post("/dev/price/reset", operator, async (_req, res) => {
       res.json(toApiPrice(await ctx.price.resetMockPrice()));
     });
   }
