@@ -5,7 +5,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { findCustomer, type Customer } from "./customers";
 import { getMohar } from "./mohar";
+import { readData, writeData } from "./datafile";
 import { partner } from "./partner";
+import { demoSecret } from "./secrets";
 
 /** One cookie per partner: both apps run on localhost, and cookies ignore the port. */
 export function sessionCookie(): string {
@@ -14,14 +16,12 @@ export function sessionCookie(): string {
 
 /**
  * The cookie holds the customer id and an HMAC of it, so a customer cannot change the id to
- * sign in as someone else. SESSION_SECRET signs it; the fallback is for local demos only.
+ * sign in as someone else. SESSION_SECRET signs it (lib/secrets.ts: required in production).
+ * This stops a forged cookie only: the demo's login screen itself asks for no password, so it
+ * is a mock of the partner's own sign-in, not a replacement for it.
  */
-function sessionSecret(): string {
-  return process.env.SESSION_SECRET ?? `local-demo-only-${partner().slug}`;
-}
-
 function sign(customerId: string): string {
-  return createHmac("sha256", sessionSecret()).update(customerId).digest("base64url");
+  return createHmac("sha256", demoSecret("SESSION_SECRET")).update(customerId).digest("base64url");
 }
 
 export function sessionValue(customerId: string): string {
@@ -55,11 +55,37 @@ export async function requireCustomer(): Promise<Customer> {
   return customer;
 }
 
-// Bank-side mapping customer -> MOHAR wallet id. A real bank keeps this in its core banking
-// system; the demo keeps it in memory and asks MOHAR again after a restart (registering the
-// same customer twice returns the wallet MOHAR already has).
-const globalWallets = globalThis as typeof globalThis & { __demoWallets?: Map<string, string> };
-const walletIds: Map<string, string> = (globalWallets.__demoWallets ??= new Map());
+// Bank-side mapping customer -> MOHAR wallet id, saved with the partner's other records
+// (lib/datafile.ts). If MOHAR no longer knows a saved wallet (its data was reset), withWallet
+// registers the customer again; registering the same customer twice returns the same wallet.
+const globalWallets = globalThis as typeof globalThis & {
+  __demoWallets?: Map<string, Map<string, string>>;
+};
+const walletsBySlug = (globalWallets.__demoWallets ??= new Map());
+
+function walletMap(): Map<string, string> {
+  const slug = partner().slug;
+  let map = walletsBySlug.get(slug);
+  if (!map) {
+    map = new Map(Object.entries(readData<Record<string, string>>("wallets", {})));
+    walletsBySlug.set(slug, map);
+  }
+  return map;
+}
+
+const walletIds = {
+  get: (customerId: string) => walletMap().get(customerId),
+  has: (customerId: string) => walletMap().has(customerId),
+  entries: () => walletMap().entries(),
+  set(customerId: string, walletId: string) {
+    walletMap().set(customerId, walletId);
+    writeData("wallets", Object.fromEntries(walletMap()));
+  },
+  delete(customerId: string) {
+    walletMap().delete(customerId);
+    writeData("wallets", Object.fromEntries(walletMap()));
+  },
+};
 
 async function registerWallet(customer: Customer): Promise<string> {
   const p = partner();
@@ -102,7 +128,7 @@ export async function withWallet<T>(
 
 /** Which demo customer a MOHAR wallet belongs to, if the bank has opened it this session. */
 export function customerForWallet(walletId: string | undefined): Customer | undefined {
-  for (const [customerId, id] of walletIds) {
+  for (const [customerId, id] of walletIds.entries()) {
     if (id === walletId) return findCustomer(customerId);
   }
   return undefined;

@@ -137,16 +137,22 @@ export class Store {
   }
 
   /** What a wallet has paid for gold since `sinceIso`, in paisa: purchases not failed. */
-  boughtSince(walletId: string, sinceIso: string): bigint {
+  /**
+   * Rupees credited to a wallet since a time: its purchases, and gold sent to it valued when it
+   * was sent. Pending and confirmed count; failed never happened. KYC limits are on money in,
+   * as the State Bank's account limits are, so buying in one wallet and passing the gold to
+   * another cannot get round the receiver's limit.
+   */
+  creditedSince(walletId: string, sinceIso: string): bigint {
     return Object.values(this.state.transactions)
-      .filter(
-        (t) =>
-          t.walletId === walletId &&
-          t.type === "mint" &&
-          t.status !== "failed" &&
-          t.createdAt >= sinceIso,
-      )
-      .reduce((sum, t) => sum + BigInt(t.netPaisa ?? "0"), 0n);
+      .filter((t) => t.status !== "failed" && t.createdAt >= sinceIso)
+      .reduce((sum, t) => {
+        if (t.type === "mint" && t.walletId === walletId) return sum + BigInt(t.netPaisa ?? "0");
+        if (t.type === "transfer" && t.counterpartyWalletId === walletId) {
+          return sum + BigInt(t.valuePaisa ?? "0");
+        }
+        return sum;
+      }, 0n);
   }
 
   /** Transactions that never reached confirmed or failed, oldest first. */

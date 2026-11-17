@@ -3,13 +3,15 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { randomBytes } from "node:crypto";
-import { addCustomer, findCustomer, type Customer } from "@/lib/customers";
-import { errorMessage } from "@/lib/format";
+import { MoharApiError } from "@mohar/sdk";
+import { addCustomer, customerWithIdentity, findCustomer, type Customer } from "@/lib/customers";
+import { errorMessage, pkr } from "@/lib/format";
 import { getMohar, moharApiUrl, moharDevKey } from "@/lib/mohar";
 import { loggingFetch } from "@/lib/devlog";
 import { recallQuote, rememberQuote } from "@/lib/quotes";
 import { maskCnic, maskPhone, readApplication, riskBand, screen } from "@/lib/onboarding";
 import { partner } from "@/lib/partner";
+import { fingerprint } from "@/lib/secrets";
 import { raastLabel, rememberPayment, type Payment } from "@/lib/payments";
 import {
   requireCustomer,
@@ -41,6 +43,8 @@ async function startSession(customer: Customer): Promise<void> {
   (await cookies()).set(sessionCookie(), sessionValue(customer.id), {
     httpOnly: true,
     sameSite: "lax",
+    // Sent over HTTPS only once hosted; plain http://localhost keeps working in development.
+    secure: process.env.NODE_ENV === "production",
     path: "/",
   });
 }
@@ -73,6 +77,34 @@ export async function openAccount(formData: FormData): Promise<void> {
     back("/signup", new Error("We cannot open this account online. Please visit a branch."));
   }
 
+  // One account per CNIC at each partner (State Bank, Asaan Account rules), and a mobile
+  // number in the customer's own name: a number already paired with another CNIC is refused.
+  // A real partner confirms the pairing with the mobile operator; the demo checks its own
+  // customers. Nothing is awaited from here until addCustomer, so two sign-ups cannot race.
+  const identity = {
+    cnic: fingerprint("cnic", application.cnic),
+    phone: fingerprint("phone", application.phone),
+  };
+  const existing = customerWithIdentity(identity);
+  if (existing.byCnic) {
+    back(
+      "/signup",
+      new Error(
+        existing.byCnic.onboarding?.outcome === "referred"
+          ? "An application with this CNIC is already being reviewed. We will contact you."
+          : "An account is already open with this CNIC. Sign in instead.",
+      ),
+    );
+  }
+  if (existing.byPhone) {
+    back(
+      "/signup",
+      new Error(
+        "This mobile number is registered to another customer. Use a number in your own name.",
+      ),
+    );
+  }
+
   const risk = riskBand(application);
   const firstName = application.fullName.split(" ")[0] ?? application.fullName;
   const customer: Customer = {
@@ -89,6 +121,7 @@ export async function openAccount(formData: FormData): Promise<void> {
       riskBand: risk.band,
       outcome: risk.band === "high" ? "referred" : "opened",
     },
+    identity,
   };
   addCustomer(customer);
   await startSession(customer);
@@ -197,6 +230,17 @@ export async function sendGold(formData: FormData): Promise<void> {
     );
     transactionId = txn.id;
   } catch (error) {
+    // The limit is the receiver's, so say so rather than show the sender their own limits.
+    if (error instanceof MoharApiError && error.code === "limit_exceeded") {
+      const most = Number(error.details?.largestAllowedPkr ?? 0);
+      back(
+        "/send",
+        new Error(
+          `That is more than ${recipient?.firstName}'s account can receive right now under its KYC limits` +
+            (most > 0 ? ` (up to ${pkr(String(most))} of gold).` : ". Try again another day."),
+        ),
+      );
+    }
     back("/send", error);
   }
   redirect(`/tx/${transactionId}`);

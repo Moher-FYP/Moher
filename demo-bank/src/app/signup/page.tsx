@@ -59,6 +59,16 @@ export default async function SignUp({ searchParams }: PageProps<"/signup">) {
             />
           </div>
           <div className="space-y-2">
+            <label htmlFor="cnicExpiry" className={label}>
+              CNIC expiry date
+            </label>
+            <input id="cnicExpiry" name="cnicExpiry" type="date" className={fieldClass} />
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="cnicLifetime" value="yes" className="accent-bank" />
+              My CNIC is valid for life
+            </label>
+          </div>
+          <div className="space-y-2">
             <label htmlFor="dateOfBirth" className={label}>
               Date of birth
             </label>
@@ -92,7 +102,7 @@ export default async function SignUp({ searchParams }: PageProps<"/signup">) {
               id="cnicFront"
               name="cnicFront"
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp,image/heic"
               capture="environment"
               required
               className="block w-full text-sm file:mr-3 file:rounded-xl file:border-0 file:bg-bank file:px-4 file:py-2.5 file:font-semibold file:text-white"

@@ -10,7 +10,7 @@ import type { Customer } from "@/lib/customers";
 import { exactGrams, fullDate, grams, pkr, shortHash, usd } from "@/lib/format";
 import { getMohar } from "@/lib/mohar";
 import { partner } from "@/lib/partner";
-import { paymentFor } from "@/lib/payments";
+import { PAYMENT_NOT_RECORDED, paymentFor } from "@/lib/payments";
 import { recallQuote } from "@/lib/quotes";
 import { canView, customerForWallet, requireCustomer, walletIdFor } from "@/lib/session";
 
@@ -138,7 +138,7 @@ function Headline({ kind, txn }: { kind: Kind; txn: Transaction }) {
 
 function Counterparty({ kind, txn }: { kind: Kind; txn: Transaction }) {
   // How the partner moved the rupees. Not known after a restart: then its own account.
-  const paid = paymentFor(txn.id)?.label ?? partner().ownFunds;
+  const paid = paymentFor(txn.id)?.label ?? PAYMENT_NOT_RECORDED;
   if (kind === "buy") return <Row label="Paid from" value={paid} />;
   if (kind === "sell") return <Row label="Paid into" value={paid} />;
   const other: Customer | undefined = customerForWallet(

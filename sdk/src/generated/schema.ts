@@ -197,7 +197,7 @@ export interface paths {
     put?: never;
     /**
      * Send gold to another customer
-     * @description Both wallets must be active. Either may belong to any partner.
+     * @description Both wallets must be active. Either may belong to any partner. Gold received counts toward the receiver's KYC limits at its value when sent, as a purchase would.
      */
     post: operations["createTransfer"];
     delete?: never;
@@ -522,7 +522,7 @@ export interface components {
         "application/json": components["schemas"]["Error"];
       };
     };
-    /** @description The purchase is over the wallet's KYC limit, per trade or across the last 24 hours. `details` gives the level, both limits and what is left for 24 hours, in PKR. */
+    /** @description The credit (a purchase, or gold sent to the wallet) is over the wallet's KYC limits: per transaction, across 24 hours, across 30 days, or the most one account may hold. `details.limit` names which one (`per_trade`, `per_24_hours`, `per_30_days`, `max_holding`); `details` also gives the level, all four limits, what is left for 24 hours and `largestAllowedPkr`, the largest credit that would pass now, in PKR. */
     LimitExceeded: {
       headers: {
         [name: string]: unknown;
@@ -847,6 +847,7 @@ export interface operations {
       401: components["responses"]["Unauthorized"];
       404: components["responses"]["NotFound"];
       409: components["responses"]["Conflict"];
+      422: components["responses"]["LimitExceeded"];
     };
   };
   listTransactions: {

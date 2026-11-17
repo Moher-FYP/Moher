@@ -7,12 +7,18 @@
  * partner's KYC record, and writes a keyed fingerprint of that reference on-chain.
  *
  * Nothing here reads the CNIC image: the "reader" takes the details the customer typed, and
- * the screen says so. The rules are simple and fixed so that a demo behaves the same every time.
+ * the screen says so. What follows the State Bank's rules for a real partner (see
+ * docs/kyc-limits.md): one account per CNIC at each partner, a mobile number in the
+ * customer's own name, no account on an expired CNIC, and customers aged 18 and over.
+ * What is only simulated: NADRA Verisys of the details, the SIM ownership check with the
+ * mobile operator, liveness of the photo, and the screening lists. The rules are simple and fixed so that a demo behaves the same every time.
  */
 
 export interface Application {
   fullName: string;
   cnic: string;
+  /** YYYY-MM-DD, or "lifetime" for a card issued for life. */
+  cnicExpiry: string;
   dateOfBirth: string;
   phone: string;
   occupation: Occupation;
@@ -65,6 +71,8 @@ export function readApplication(
   const cnic = text("cnic").replace(/[\s-]/g, "");
   const phone = text("phone").replace(/[\s-]/g, "");
   const dateOfBirth = text("dateOfBirth");
+  const lifetime = form.get("cnicLifetime") === "yes";
+  const cnicExpiry = lifetime ? "lifetime" : text("cnicExpiry");
   const occupation = text("occupation");
   const sourceOfFunds = text("sourceOfFunds");
   const monthlyAmount = text("monthlyAmount");
@@ -74,6 +82,26 @@ export function readApplication(
   }
   if (!/^\d{13}$/.test(cnic)) {
     return { ok: false, problem: "Enter the 13 digits of your CNIC, for example 35202-1234567-1." };
+  }
+  // The first digit is the province or region of issue, 1 to 7.
+  if (!/^[1-7]/.test(cnic)) {
+    return { ok: false, problem: "That is not a valid CNIC number. Check the first digit." };
+  }
+  // The State Bank blocks accounts on an expired CNIC, so an expired card cannot open one.
+  if (cnicExpiry !== "lifetime") {
+    const expires = new Date(`${cnicExpiry}T23:59:59Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cnicExpiry) || Number.isNaN(expires.getTime())) {
+      return {
+        ok: false,
+        problem: "Enter your CNIC's expiry date, or tick that it is valid for life.",
+      };
+    }
+    if (expires < today) {
+      return {
+        ok: false,
+        problem: "Your CNIC has expired. Renew it with NADRA, then apply again.",
+      };
+    }
   }
   if (!/^03\d{9}$/.test(phone)) {
     return { ok: false, problem: "Enter a Pakistani mobile number, for example 0300 1234567." };
@@ -108,6 +136,7 @@ export function readApplication(
     application: {
       fullName,
       cnic,
+      cnicExpiry,
       dateOfBirth,
       phone,
       occupation: occupation as Occupation,

@@ -39,9 +39,15 @@ and a reference to the partner's record, never the CNIC.
 To show each outcome: any made-up name opens; "Test Exposed Person", or ticking the public
 office box, is referred; "Test Blocked Person" is refused.
 
-MOHAR enforces purchase limits per KYC level (the API's `KYC_LIMITS`), and the app explains a
-refusal in plain words. Only masked CNIC and phone numbers are stored, in
-`.data/customers-<partner>.json`.
+The checks follow the State Bank's rules for opening an account (`docs/kyc-limits.md`): one
+account per CNIC at each partner, a mobile number not already used by another customer, no
+account on an expired CNIC, and customers aged 18 and over. NADRA verification, the mobile
+operator's SIM check and the screening lists are simulated.
+
+MOHAR enforces limits per KYC level (the API's `KYC_LIMITS`) on everything a customer receives,
+bought or sent to them, and the app explains a refusal in plain words. Records are kept in
+`.data/` per partner: customers (masked CNIC and phone, plus keyed fingerprints to spot a
+repeat), the customer-to-wallet mapping, and how each trade was paid.
 
 ## Screens
 
@@ -67,9 +73,13 @@ price, press "Gold up 1%", then confirm — the contract cancels the trade and n
   `src/lib/mohar.ts`, which imports `server-only`. The API key never reaches the browser.
 - Each trade uses the quote id as its idempotency key, so a double click cannot buy twice.
 - `src/app/api/mohar/webhooks/route.ts` verifies MOHAR's webhooks with the SDK.
-- The partner keeps its own mapping of customer to MOHAR wallet (`src/lib/session.ts`) and the
-  quotes it has shown (`src/lib/quotes.ts`) — in memory, because this is a demo.
-- The session cookie is signed (`SESSION_SECRET`), so a customer cannot change it to become
-  someone else. There is still no password: this is a demo.
+- The partner keeps its own mapping of customer to MOHAR wallet (`src/lib/session.ts`) and how
+  each trade was paid (`src/lib/payments.ts`), saved in `.data/`; the quotes it has shown
+  (`src/lib/quotes.ts`) stay in memory, since they expire in a minute.
+- The session cookie is signed (`SESSION_SECRET`) and sent over HTTPS only in production, so a
+  customer cannot change it to become someone else. The login screen asks for no password: it
+  stands in for the partner's own sign-in, which MOHAR does not replace.
+- In production (`next build` / `next start`), `SESSION_SECRET` and `CUSTOMER_HASH_SECRET`
+  must be set; the local stand-ins are public in this repository.
 
 This is Next.js 16. Check `node_modules/next/dist/docs/` before relying on older patterns.

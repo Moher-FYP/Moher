@@ -1,6 +1,5 @@
 import "server-only";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { readData, writeData } from "./datafile";
 import { partner } from "./partner";
 
 /** What the partner recorded when it opened the account (lib/onboarding.ts). */
@@ -14,6 +13,12 @@ export interface OnboardingRecord {
   outcome: "opened" | "referred";
 }
 
+/** Keyed fingerprints (lib/secrets.ts) of the CNIC and mobile number: never the numbers. */
+export interface IdentityPrints {
+  cnic: string;
+  phone: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -21,6 +26,7 @@ export interface Customer {
   description: string;
   kycLevel: "asaan" | "standard";
   onboarding?: OnboardingRecord;
+  identity?: IdentityPrints;
 }
 
 /** The personas from FYP-1 §2.4, each at the partner that suits them. */
@@ -59,12 +65,8 @@ const PERSONAS: Record<"bank" | "wallet", Customer[]> = {
   ],
 };
 
-// Customers who signed up in the demo are kept in a small JSON file per partner, so they
-// survive a restart. A real partner keeps them in its core banking system. Only masked
-// identity numbers are stored: the CNIC itself is never kept.
-const DATA_DIR = join(process.cwd(), ".data");
-const dataFile = () => join(DATA_DIR, `customers-${partner().slug}.json`);
-
+// Customers who signed up in the demo (lib/datafile.ts). Only masked numbers and keyed
+// fingerprints are stored: the CNIC and the mobile number themselves are never kept.
 const cache = globalThis as typeof globalThis & { __signups?: Map<string, Customer[]> };
 const signupsBySlug = (cache.__signups ??= new Map());
 
@@ -72,11 +74,7 @@ function signups(): Customer[] {
   const slug = partner().slug;
   let list = signupsBySlug.get(slug);
   if (!list) {
-    try {
-      list = JSON.parse(readFileSync(dataFile(), "utf8")) as Customer[];
-    } catch {
-      list = [];
-    }
+    list = readData<Customer[]>("customers", []);
     signupsBySlug.set(slug, list);
   }
   return list;
@@ -90,11 +88,25 @@ export function findCustomer(id: string | undefined): Customer | undefined {
   return id ? allCustomers().find((c) => c.id === id) : undefined;
 }
 
+/**
+ * The customer who already opened an account with this CNIC, or this mobile number, at this
+ * partner. Applications referred for review count too: a second application cannot get round
+ * the review.
+ */
+export function customerWithIdentity(prints: IdentityPrints): {
+  byCnic?: Customer;
+  byPhone?: Customer;
+} {
+  const list = signups();
+  return {
+    byCnic: list.find((c) => c.identity?.cnic === prints.cnic),
+    byPhone: list.find((c) => c.identity?.phone === prints.phone),
+  };
+}
+
+/** Call with no await between the identity check and this, so two sign-ups cannot race. */
 export function addCustomer(customer: Customer): void {
   const list = signups();
   list.push(customer);
-  mkdirSync(DATA_DIR, { recursive: true });
-  const tmp = `${dataFile()}.tmp`;
-  writeFileSync(tmp, JSON.stringify(list, null, 2), { mode: 0o600 });
-  renameSync(tmp, dataFile());
+  writeData("customers", list);
 }

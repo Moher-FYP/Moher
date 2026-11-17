@@ -14,5 +14,16 @@ onlyBuiltDependencies:
 
 # Security overrides for dependencies of dependencies (pnpm audit).
 # uuid below 11.1.1 has a known flaw; @metamask/utils (via @openzeppelin/merkle-tree) asks for 9.
+# zod (via eslint-config-next) had an advisory published in November 2026; it is a development
+# tool, never shipped, and the override moves it to the fixed release. vite, which vitest uses,
+# is pinned to a fixed release directly in api/ and sdk/ (a peer dependency is not overridden).
 overrides:
   "uuid@<11.1.1": ^11.1.1
+  "zod@<4.6.6": ^4.6.7
+
+# picomatch (via eslint-config-next's file globbing) has a ReDoS advisory with no fixed release
+# yet. It only ever matches this repository's own file paths while linting, never user input,
+# and it is not in anything that runs. Remove this once a fixed version is out.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-fc5q-39xc-vjpf

@@ -27,6 +27,7 @@ contract Deploy is Script {
     uint256 internal constant DEFAULT_MAX_STALENESS = 1 hours;
     string internal constant DEFAULT_PARTNER = "demo-bank";
     string internal constant WALLET_PARTNER = "moher-wallet";
+    uint256 internal constant AMOY_CHAIN_ID = 80_002;
 
     struct Config {
         uint256 deployerKey;
@@ -79,8 +80,10 @@ contract Deploy is Script {
         reserve.grantRole(reserve.PUBLISHER_ROLE(), c.relayer);
 
         registry.registerPartner(c.demoPartnerId);
-        // The second demo partner, a mobile wallet (demo-bank/README.md).
-        if (c.demoPartnerId != keccak256(bytes(WALLET_PARTNER))) {
+        // The second demo partner, a mobile wallet (demo-bank/README.md). Demo networks only: on
+        // any other chain a partner is registered by the operator after it is onboarded.
+        bool demoNetwork = block.chainid == ANVIL_CHAIN_ID || block.chainid == AMOY_CHAIN_ID;
+        if (demoNetwork && c.demoPartnerId != keccak256(bytes(WALLET_PARTNER))) {
             registry.registerPartner(keccak256(bytes(WALLET_PARTNER)));
         }
 

@@ -45,7 +45,7 @@ export class SettlementService {
           wallet: wallet.address,
           grams,
           allocationRef: this.ref(txn.id),
-          deadline: (await this.chain.latestBlockTimestamp()) + ATTESTATION_TTL_SECONDS,
+          deadline: await this.receiptDeadline(),
         };
         this.vault.allocate(wallet.address, grams); // counts from signing (accounting rule)
         try {
@@ -69,7 +69,7 @@ export class SettlementService {
           wallet: wallet.address,
           grams,
           deallocationRef: this.ref(txn.id),
-          deadline: (await this.chain.latestBlockTimestamp()) + ATTESTATION_TTL_SECONDS,
+          deadline: await this.receiptDeadline(),
         };
         const signature = await this.vault.signDeallocation(deallocation);
         const result = await this.chain.burn(
@@ -90,8 +90,9 @@ export class SettlementService {
     from: WalletRecord,
     to: WalletRecord,
     grams: bigint,
+    valuePaisa: bigint,
   ): TransactionRecord {
-    const txn = this.create(partner, "transfer", from, grams, undefined, to);
+    const txn = this.create(partner, "transfer", from, grams, undefined, to, valuePaisa);
     void this.queue.run(() =>
       this.settle(partner, txn, async (onSubmitted) => {
         const result = await this.chain.operatorTransfer(
@@ -175,6 +176,17 @@ export class SettlementService {
 
   // ---------------------------------------------------------------- internal
 
+  /**
+   * When the vault's signed receipt stops being valid. Counted from the later of the last
+   * block and the clock: a local chain mines only when a transaction arrives, so after a quiet
+   * spell its last block is old, and a deadline counted from it would already have passed.
+   */
+  private async receiptDeadline(): Promise<bigint> {
+    const block = await this.chain.latestBlockTimestamp();
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    return (block > now ? block : now) + ATTESTATION_TTL_SECONDS;
+  }
+
   private create(
     partner: Partner,
     type: TransactionRecord["type"],
@@ -182,6 +194,7 @@ export class SettlementService {
     grams: bigint,
     quote?: QuoteRecord,
     counterparty?: WalletRecord,
+    valuePaisa?: bigint,
   ): TransactionRecord {
     const txn: TransactionRecord = {
       id: newId("txn"),
@@ -193,6 +206,7 @@ export class SettlementService {
       createdAt: new Date().toISOString(),
       ...(quote ? { quoteId: quote.id, netPaisa: quote.netPaisa } : {}),
       ...(counterparty ? { counterpartyWalletId: counterparty.id } : {}),
+      ...(valuePaisa !== undefined ? { valuePaisa: valuePaisa.toString() } : {}),
     };
     this.store.saveTransaction(txn);
     return txn;

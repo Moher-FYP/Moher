@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { z } from "zod";
 import { LOCAL_ONLY } from "./secrets.js";
+import { DEFAULT_KYC_LIMITS } from "./domain/kyc-limits.js";
 
 /**
  * API configuration. Every variable has a safe local default, so `pnpm --filter @mohar/api dev`
@@ -38,13 +39,11 @@ const ConfigSchema = z.object({
     .regex(/^\d+(\.\d{1,4})?$/)
     .default("279.05"),
   /**
-   * How much a customer may buy per trade and per 24 hours at each KYC level, in PKR:
-   * `level=perTrade:per24Hours`, comma-separated. THE DEFAULTS ARE PLACEHOLDERS for the demo,
-   * not the State Bank's figures: set the real ones before any real customer uses this.
+   * What a customer may receive (buy, or be sent) at each KYC level, in PKR:
+   * `level=perTrade:per24Hours:per30Days:maxHolding`, comma-separated. The defaults follow the
+   * State Bank's account levels (src/domain/kyc-limits.ts); each partner confirms its own.
    */
-  KYC_LIMITS: z
-    .string()
-    .default("asaan=50000:100000,standard=500000:1000000,enhanced=2500000:5000000"),
+  KYC_LIMITS: z.string().default(DEFAULT_KYC_LIMITS),
   PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(1_000).default(50),
   FX_MARGIN_BPS: z.coerce.number().int().min(0).max(25).default(25),
   QUOTE_TTL_SECONDS: z.coerce.number().int().min(10).max(600).default(60),
