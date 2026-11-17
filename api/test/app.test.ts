@@ -5,6 +5,7 @@ import { createApp } from "../src/app.js";
 import type { MoharChain } from "../src/chain/mohar-chain.js";
 import type { AppContext } from "../src/context.js";
 import { kycFingerprint } from "../src/domain/kyc.js";
+import { parseKycLimits } from "../src/domain/kyc-limits.js";
 import { PartnerDirectory } from "../src/http/auth.js";
 import { SerialQueue } from "../src/lib/queue.js";
 import { Store } from "../src/store/store.js";
@@ -45,6 +46,9 @@ function fakeContext(
       walletRegistrationsPerHour: limits.walletRegistrationsPerHour ?? 120,
       devRoutes: false,
       devPriceBandBps: 500n,
+      kycLimits: parseKycLimits(
+        "asaan=50000:100000,standard=500000:1000000,enhanced=2500000:5000000",
+      ),
     },
   } as unknown as AppContext;
   return { ctx, registerWallet };

@@ -15,6 +15,7 @@ import type { QuoteRecord, TransactionRecord, WalletRecord } from "../domain/typ
 import { ApiError } from "../errors.js";
 import { newId } from "../lib/ids.js";
 import { PriceBandError } from "../services/price.js";
+import { overLimit } from "../domain/kyc-limits.js";
 import { holdingRef } from "../vault/mock-vault.js";
 import { partnerOf, requireOperator, requirePartner } from "./auth.js";
 import { idempotent } from "./idempotency.js";
@@ -118,6 +119,32 @@ export function partnerRoutes(ctx: AppContext): Router {
         requiredGrams: formatGrams(needed),
       });
     }
+  }
+
+  /**
+   * Refuses a purchase over the wallet's KYC limits: per trade, and across the last 24 hours.
+   * Checked when quoting and again when executing, since other purchases may land in between.
+   */
+  function requireWithinLimit(wallet: WalletRecord, purchasePaisa: bigint): void {
+    const limit = ctx.settings.kycLimits[wallet.kycLevel];
+    const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
+    const bought = ctx.store.boughtSince(wallet.id, since);
+    const over = overLimit(limit, purchasePaisa, bought);
+    if (!over) return;
+    const left = limit.per24HoursPaisa > bought ? limit.per24HoursPaisa - bought : 0n;
+    throw new ApiError(
+      422,
+      "limit_exceeded",
+      over === "per_trade"
+        ? `Above the ${wallet.kycLevel} KYC limit for one purchase`
+        : `Above the ${wallet.kycLevel} KYC limit for 24 hours`,
+      {
+        kycLevel: wallet.kycLevel,
+        perTradePkr: formatPkr(limit.perTradePaisa),
+        per24HoursPkr: formatPkr(limit.per24HoursPaisa),
+        remaining24HoursPkr: formatPkr(left),
+      },
+    );
   }
 
   function usableQuote(res: Response, id: string, side: "buy" | "sell"): QuoteRecord {
@@ -291,6 +318,7 @@ export function partnerRoutes(ctx: AppContext): Router {
         : { grams: parseGrams(body.grams as string) };
     const math = computeQuote(body.side, amount, price, ctx.settings.fees);
     if (body.side === "sell") await requireBalance(wallet, math.grams);
+    else requireWithinLimit(wallet, math.netPaisa);
 
     const now = Date.now();
     const quote: QuoteRecord = {
@@ -318,13 +346,17 @@ export function partnerRoutes(ctx: AppContext): Router {
     const { quoteId: id } = parse(ExecuteQuoteBody, req.body);
     const quote = usableQuote(res, id, "buy");
     const wallet = ownWallet(res, quote.walletId);
+    requireWithinLimit(wallet, BigInt(quote.netPaisa));
     await requireActive(wallet);
     if (await ctx.chain.mintingPaused()) {
       throw new ApiError(409, "minting_paused", "Minting is paused");
     }
-    const txn = claimQuote(res, id, "buy", (claimed) =>
-      ctx.settlement.startMint(partnerOf(res), claimed, wallet),
-    );
+    // Checked again inside the claim, with no await before it, so two purchases sent together
+    // cannot both fit under the 24-hour limit that only one of them fits.
+    const txn = claimQuote(res, id, "buy", (claimed) => {
+      requireWithinLimit(wallet, BigInt(claimed.netPaisa));
+      return ctx.settlement.startMint(partnerOf(res), claimed, wallet);
+    });
     res.status(202).json(present(txn));
   });
 

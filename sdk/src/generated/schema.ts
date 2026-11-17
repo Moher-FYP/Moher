@@ -493,6 +493,7 @@ export interface components {
           | "insufficient_balance"
           | "idempotency_conflict"
           | "rate_limited"
+          | "limit_exceeded"
           | "not_implemented"
           | "internal_error";
         message: string;
@@ -514,6 +515,15 @@ export interface components {
     };
     /** @description Missing or invalid API key */
     Unauthorized: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["Error"];
+      };
+    };
+    /** @description The purchase is over the wallet's KYC limit, per trade or across the last 24 hours. `details` gives the level, both limits and what is left for 24 hours, in PKR. */
+    LimitExceeded: {
       headers: {
         [name: string]: unknown;
       };
@@ -742,6 +752,7 @@ export interface operations {
       401: components["responses"]["Unauthorized"];
       404: components["responses"]["NotFound"];
       409: components["responses"]["Conflict"];
+      422: components["responses"]["LimitExceeded"];
     };
   };
   createMint: {
@@ -773,6 +784,7 @@ export interface operations {
       401: components["responses"]["Unauthorized"];
       404: components["responses"]["NotFound"];
       409: components["responses"]["Conflict"];
+      422: components["responses"]["LimitExceeded"];
     };
   };
   createBurn: {

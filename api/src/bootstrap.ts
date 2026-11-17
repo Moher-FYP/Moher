@@ -8,6 +8,7 @@ import { ChainlinkReferenceFeed } from "./chain/reference-feed.js";
 import { ANVIL_DEFAULTS, type Config } from "./config.js";
 import type { AppContext } from "./context.js";
 import { kycFingerprint } from "./domain/kyc.js";
+import { parseKycLimits } from "./domain/kyc-limits.js";
 import { PartnerDirectory } from "./http/auth.js";
 import { toApiTransaction } from "./http/presenters.js";
 import { findWeakSecrets, LOCAL_ONLY } from "./secrets.js";
@@ -129,6 +130,18 @@ export async function bootstrap(config: Config): Promise<AppContext> {
       .catch((error: unknown) => console.error("Reserve publish failed:", errorMessage(error)));
   }
 
+  // A partner whose id the WalletRegistry does not know cannot register customers: every
+  // registration would revert. Say so at start-up, with the fix, rather than on first use.
+  for (const partner of partners.all()) {
+    if (!(await chain.isPartnerActive(partner.partnerId))) {
+      console.warn(
+        `Partner "${partner.slug}" is not registered on-chain, so its customers cannot open wallets.\n` +
+          `  The admin registers it with:\n` +
+          `  cast send ${deployment.walletRegistry} "registerPartner(bytes32)" ${partner.partnerId} --rpc-url <RPC> --private-key <admin key>`,
+      );
+    }
+  }
+
   const mirror = await mirrorOptions(config, deployment);
   const price = new PriceService(chain, queue, toE4(config.USD_PKR_RATE), mirror);
   if (mirror) await price.tick(); // start from the market price, not the deploy-time one
@@ -147,6 +160,7 @@ export async function bootstrap(config: Config): Promise<AppContext> {
     kycFingerprint: (partnerSlug, reference) =>
       kycFingerprint(kycHashSecret ?? LOCAL_ONLY.kycHashSecret, partnerSlug, reference),
     settings: {
+      kycLimits: parseKycLimits(config.KYC_LIMITS),
       fees: {
         platformFeeBps: BigInt(config.PLATFORM_FEE_BPS),
         fxMarginBps: BigInt(config.FX_MARGIN_BPS),

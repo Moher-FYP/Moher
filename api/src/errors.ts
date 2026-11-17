@@ -13,6 +13,7 @@ export type ErrorCode =
   | "insufficient_balance"
   | "idempotency_conflict"
   | "rate_limited"
+  | "limit_exceeded"
   | "not_implemented"
   | "internal_error";
 

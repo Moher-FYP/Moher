@@ -157,6 +157,16 @@ export class MoharChain {
     });
   }
 
+  /** True once the admin has registered this partner id in the WalletRegistry. */
+  isPartnerActive(partnerId: Hex): Promise<boolean> {
+    return this.publicClient.readContract({
+      address: this.deployment.walletRegistry,
+      abi: walletRegistryAbi,
+      functionName: "isPartnerActive",
+      args: [partnerId],
+    });
+  }
+
   async latestReserve(): Promise<PublishedReserve | null> {
     try {
       const latest = await this.publicClient.readContract({

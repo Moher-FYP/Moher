@@ -26,6 +26,7 @@ contract Deploy is Script {
     int256 internal constant DEFAULT_XAU_USD = 4_616e8;
     uint256 internal constant DEFAULT_MAX_STALENESS = 1 hours;
     string internal constant DEFAULT_PARTNER = "demo-bank";
+    string internal constant WALLET_PARTNER = "moher-wallet";
 
     struct Config {
         uint256 deployerKey;
@@ -78,6 +79,10 @@ contract Deploy is Script {
         reserve.grantRole(reserve.PUBLISHER_ROLE(), c.relayer);
 
         registry.registerPartner(c.demoPartnerId);
+        // The second demo partner, a mobile wallet (demo-bank/README.md).
+        if (c.demoPartnerId != keccak256(bytes(WALLET_PARTNER))) {
+            registry.registerPartner(keccak256(bytes(WALLET_PARTNER)));
+        }
 
         vm.stopBroadcast();
 

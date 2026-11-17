@@ -1,4 +1,5 @@
 import type { Address, Hex } from "viem";
+import type { KycLimits } from "./domain/kyc-limits.js";
 import type { MoharChain } from "./chain/mohar-chain.js";
 import type { FeeRates } from "./domain/pricing.js";
 import type { PartnerDirectory } from "./http/auth.js";
@@ -24,6 +25,8 @@ export interface AppContext {
   kycFingerprint: (partnerSlug: string, reference: string) => Hex;
   settings: {
     fees: FeeRates;
+    /** Purchase limits per KYC level (domain/kyc-limits.ts). */
+    kycLimits: KycLimits;
     quoteTtlSeconds: number;
     /** Requests per partner per minute. */
     requestsPerMinute: number;

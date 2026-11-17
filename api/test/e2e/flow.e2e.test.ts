@@ -168,6 +168,38 @@ describe.skipIf(!hasFoundry)("MOHAR end to end (Anvil + API + SDK)", () => {
     expect(after - before).toBe(parseGrams(quote.grams));
   });
 
+  it("holds each customer to the purchase limits of their KYC level", async () => {
+    // Asaan (basic) KYC: Rs 50,000 per purchase and Rs 100,000 per 24 hours by default.
+    const basic = await mohar.registerWallet(
+      {
+        externalCustomerId: "student-01",
+        kyc: { reference: "BANK-KYC-ST01", level: "asaan", verifiedAt: "2026-11-01T09:00:00Z" },
+      },
+      { idempotencyKey: "register-student-01" },
+    );
+    const tooBig = mohar.createQuote({ walletId: basic.id, side: "buy", amountPkr: "60000.00" });
+    await expect(tooBig).rejects.toMatchObject({ status: 422, code: "limit_exceeded" });
+
+    for (const n of [1, 2]) {
+      const quote = await mohar.createQuote({
+        walletId: basic.id,
+        side: "buy",
+        amountPkr: "45000.00",
+      });
+      await settle(await mohar.mint({ quoteId: quote.id }, { idempotencyKey: `student-buy-${n}` }));
+    }
+    // Rs 90,000 bought today, so Rs 20,000 more would pass Rs 100,000.
+    const overDay = mohar.createQuote({ walletId: basic.id, side: "buy", amountPkr: "20000.00" });
+    await expect(overDay).rejects.toMatchObject({
+      status: 422,
+      code: "limit_exceeded",
+      details: { kycLevel: "asaan", remaining24HoursPkr: "10000.00" },
+    });
+    // Selling is never limited.
+    const sell = await mohar.createQuote({ walletId: basic.id, side: "sell", grams: "0.1" });
+    expect(sell.side).toBe("sell");
+  });
+
   it("sends a signed webhook the bank can verify with the SDK", async () => {
     await waitFor(async () => webhooks.length > 0);
     const hook = webhooks[0]!;

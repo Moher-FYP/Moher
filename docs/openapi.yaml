@@ -207,6 +207,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
 
   /v1/mints:
     post:
@@ -239,6 +241,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
 
   /v1/burns:
     post:
@@ -455,6 +459,14 @@ components:
             $ref: "#/components/schemas/Error"
     Unauthorized:
       description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    LimitExceeded:
+      description: >-
+        The purchase is over the wallet's KYC limit, per trade or across the last 24 hours.
+        `details` gives the level, both limits and what is left for 24 hours, in PKR.
       content:
         application/json:
           schema:
@@ -825,6 +837,7 @@ components:
                 - insufficient_balance
                 - idempotency_conflict
                 - rate_limited
+                - limit_exceeded
                 - not_implemented
                 - internal_error
             message:

@@ -136,6 +136,19 @@ export class Store {
     };
   }
 
+  /** What a wallet has paid for gold since `sinceIso`, in paisa: purchases not failed. */
+  boughtSince(walletId: string, sinceIso: string): bigint {
+    return Object.values(this.state.transactions)
+      .filter(
+        (t) =>
+          t.walletId === walletId &&
+          t.type === "mint" &&
+          t.status !== "failed" &&
+          t.createdAt >= sinceIso,
+      )
+      .reduce((sum, t) => sum + BigInt(t.netPaisa ?? "0"), 0n);
+  }
+
   /** Transactions that never reached confirmed or failed, oldest first. */
   unfinishedTransactions(): TransactionRecord[] {
     return Object.values(this.state.transactions)
