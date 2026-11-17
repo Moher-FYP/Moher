@@ -44,10 +44,11 @@ describe("secrets off the local chain", () => {
       LOCAL_ONLY.webhookSecret,
     );
     const problems = check(directory, { devRoutes: true, devApiKey: LOCAL_ONLY.devApiKey });
-    expect(problems).toHaveLength(3);
+    expect(problems).toHaveLength(4);
     expect(problems[0]).toMatch(/^PARTNER_API_KEYS: key 1 is the repo's local default/);
-    expect(problems[1]).toMatch(/^PARTNER_WEBHOOK_SECRETS: no secret for "demo-bank"/);
-    expect(problems[2]).toMatch(/^DEV_API_KEY: is the repo's local default/);
+    expect(problems[1]).toMatch(/^PARTNER_API_KEYS: key 2 is the repo's local default/);
+    expect(problems[2]).toMatch(/^PARTNER_WEBHOOK_SECRETS: no secret for "demo-bank"/);
+    expect(problems[3]).toMatch(/^DEV_API_KEY: is the repo's local default/);
   });
 
   it("refuses short secrets and never prints a secret's value", () => {

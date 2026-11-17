@@ -43,8 +43,9 @@ best there.
    pnpm install
    ```
    Already cloned without them? Run `git submodule update --init --recursive`.
-4. Copy the env templates: `api/.env.example → api/.env`,
-   `demo-bank/.env.example → demo-bank/.env.local`, `contracts/.env.example → contracts/.env`.
+4. Copy the env templates: `api/.env.example → api/.env`, `contracts/.env.example → contracts/.env`.
+   The demo partners need no env file locally; `demo-bank/.env.example` explains the settings
+   for a testnet.
 5. Open in VS Code and accept the recommended extensions.
 
 ## Run locally
@@ -56,11 +57,12 @@ pnpm chain                                   # 1. local blockchain (Anvil) on :8
 pnpm contracts:deploy:local                  # 2a. deploy contracts (after EVERY chain restart)
 pnpm --filter @mohar/sdk build && pnpm --filter @mohar/api dev   # 2b. API on :4000
 pnpm --filter @mohar/sdk dev                 # 3. SDK rebuilds on change
-pnpm --filter @mohar/demo-bank dev           # 4. demo bank on :3000
+pnpm --filter @mohar/demo-bank dev           # 4. Moher Bank on :3000
+pnpm --filter @mohar/demo-bank dev:wallet    # 5. Moher Wallet on :3001 (optional)
 ```
 
 Open http://localhost:3000, sign in as Hassan, and buy some gold. The panel on the right shows
-every call the bank makes to MOHAR. `demo-bank/README.md` explains the screens and the
+every call the partner makes to MOHAR. `demo-bank/README.md` explains the screens and the
 slippage demo.
 
 To buy, sell and check the reserve by hand, follow the curl walkthrough in

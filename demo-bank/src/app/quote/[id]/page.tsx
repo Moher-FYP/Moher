@@ -5,6 +5,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { ConfirmQuote } from "@/components/ConfirmQuote";
 import { FormError, quietButton } from "@/components/ui";
 import { grams, pkr } from "@/lib/format";
+import { partner } from "@/lib/partner";
 import { recallQuote } from "@/lib/quotes";
 import { requireCustomer } from "@/lib/session";
 
@@ -63,7 +64,41 @@ export default async function QuotePage({ params, searchParams }: PageProps<"/qu
           expiresAt={quote.expiresAt}
           label={buying ? `Pay ${pkr(quote.netAmountPkr)}` : `Sell ${grams(quote.grams)}`}
           action={confirmQuote}
-        />
+        >
+          <fieldset className="space-y-2 pb-2">
+            <legend className="mb-2 font-semibold">
+              {buying ? "Pay with" : "Send the money to"}
+            </legend>
+            <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-line p-4 has-[:checked]:border-bank has-[:checked]:bg-bank/5">
+              <input
+                type="radio"
+                name="payWith"
+                value="own"
+                defaultChecked
+                className="accent-bank"
+              />
+              <span className="font-medium">{partner().ownFunds}</span>
+            </label>
+            <label className="block cursor-pointer space-y-3 rounded-2xl border border-line p-4 has-[:checked]:border-bank has-[:checked]:bg-bank/5">
+              <span className="flex items-center gap-3">
+                <input type="radio" name="payWith" value="raast" className="accent-bank" />
+                <span>
+                  <span className="block font-medium">Another bank, by Raast</span>
+                  <span className="text-sm text-ink-soft">
+                    The State Bank&apos;s instant payments. Simulated in this demo.
+                  </span>
+                </span>
+              </span>
+              <input
+                name="raastId"
+                aria-label="Raast ID"
+                placeholder="Raast ID: 0300 1234567 or PK… IBAN"
+                autoComplete="off"
+                className="w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm"
+              />
+            </label>
+          </fieldset>
+        </ConfirmQuote>
         <Link href="/" className={quietButton}>
           Cancel
         </Link>

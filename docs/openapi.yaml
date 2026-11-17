@@ -207,6 +207,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
 
   /v1/mints:
     post:
@@ -239,6 +241,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
 
   /v1/burns:
     post:
@@ -277,7 +281,9 @@ paths:
       tags: [Settlement]
       operationId: createTransfer
       summary: Send gold to another customer
-      description: Both wallets must be active. Either may belong to any partner.
+      description: >-
+        Both wallets must be active. Either may belong to any partner. Gold received counts
+        toward the receiver's KYC limits at its value when sent, as a purchase would.
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -301,6 +307,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
 
   /v1/transactions:
     get:
@@ -455,6 +463,17 @@ components:
             $ref: "#/components/schemas/Error"
     Unauthorized:
       description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    LimitExceeded:
+      description: >-
+        The credit (a purchase, or gold sent to the wallet) is over the wallet's KYC limits:
+        per transaction, across 24 hours, across 30 days, or the most one account may hold.
+        `details.limit` names which one (`per_trade`, `per_24_hours`, `per_30_days`,
+        `max_holding`); `details` also gives the level, all four limits, what is left for 24
+        hours and `largestAllowedPkr`, the largest credit that would pass now, in PKR.
       content:
         application/json:
           schema:
@@ -825,6 +844,7 @@ components:
                 - insufficient_balance
                 - idempotency_conflict
                 - rate_limited
+                - limit_exceeded
                 - not_implemented
                 - internal_error
             message:

@@ -33,6 +33,8 @@ export function when(iso: string): string {
 }
 
 export function errorMessage(error: unknown): string {
+  const limit = limitMessage(error);
+  if (limit) return limit;
   if (error && typeof error === "object" && "message" in error) {
     return String((error as { message: unknown }).message);
   }
@@ -66,4 +68,26 @@ const usdFormat = new Intl.NumberFormat("en-US", {
 
 export function usd(amount: string): string {
   return `US$ ${usdFormat.format(Number(amount))}`;
+}
+
+const LIMIT_REASONS: Record<string, string> = {
+  per_trade: "for one transaction",
+  per_24_hours: "for any 24 hours",
+  per_30_days: "for any 30 days",
+  max_holding: "for the most gold your account may hold",
+};
+
+/** MOHAR's limit_exceeded error, in words a customer understands. */
+function limitMessage(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const { code, details } = error as { code?: unknown; details?: Record<string, unknown> };
+  if (code !== "limit_exceeded" || !details) return undefined;
+  const reason = LIMIT_REASONS[String(details.limit)] ?? "";
+  const caps = `${pkr(String(details.perTradePkr))} per transaction, ${pkr(String(details.per24HoursPkr))} a day, ${pkr(String(details.per30DaysPkr))} in 30 days, and gold worth up to ${pkr(String(details.maxHoldingPkr))}`;
+  const most = Number(details.largestAllowedPkr);
+  const now =
+    most > 0
+      ? `The most you can receive now is ${pkr(String(details.largestAllowedPkr))}.`
+      : "You cannot receive more gold until some of the limit frees up.";
+  return `That is over your account's limit ${reason}. Your limits are ${caps}. ${now}`;
 }

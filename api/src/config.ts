@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { z } from "zod";
 import { LOCAL_ONLY } from "./secrets.js";
+import { DEFAULT_KYC_LIMITS } from "./domain/kyc-limits.js";
 
 /**
  * API configuration. Every variable has a safe local default, so `pnpm --filter @mohar/api dev`
@@ -37,6 +38,12 @@ const ConfigSchema = z.object({
     .string()
     .regex(/^\d+(\.\d{1,4})?$/)
     .default("279.05"),
+  /**
+   * What a customer may receive (buy, or be sent) at each KYC level, in PKR:
+   * `level=perTrade:per24Hours:per30Days:maxHolding`, comma-separated. The defaults follow the
+   * State Bank's account levels (src/domain/kyc-limits.ts); each partner confirms its own.
+   */
+  KYC_LIMITS: z.string().default(DEFAULT_KYC_LIMITS),
   PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(1_000).default(50),
   FX_MARGIN_BPS: z.coerce.number().int().min(0).max(25).default(25),
   QUOTE_TTL_SECONDS: z.coerce.number().int().min(10).max(600).default(60),
@@ -47,7 +54,11 @@ const ConfigSchema = z.object({
    */
   PARTNER_API_KEYS: z.string().default(LOCAL_ONLY.partnerApiKeys),
   /** Comma-separated `partnerSlug=https://...` pairs. */
-  PARTNER_WEBHOOK_URLS: z.string().default("demo-bank=http://localhost:3000/api/mohar/webhooks"),
+  PARTNER_WEBHOOK_URLS: z
+    .string()
+    .default(
+      "demo-bank=http://localhost:3000/api/mohar/webhooks,moher-wallet=http://localhost:3001/api/mohar/webhooks",
+    ),
   /**
    * Comma-separated `partnerSlug=secret` pairs: each partner's own webhook signing secret, so
    * one partner cannot forge an event to another. Required off local Anvil.

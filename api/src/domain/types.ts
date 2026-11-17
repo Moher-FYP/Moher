@@ -59,6 +59,8 @@ export interface TransactionRecord {
   grams: string;
   quoteId?: string;
   netPaisa?: string;
+  /** Transfers only: what the gold was worth when sent, for the receiver's KYC limits. */
+  valuePaisa?: string;
   txHash?: Hex;
   blockNumber?: number;
   failureCode?: string;

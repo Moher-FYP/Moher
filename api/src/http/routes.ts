@@ -14,7 +14,13 @@ import { computeQuote, valuePaisa, type QuoteAmount } from "../domain/pricing.js
 import type { QuoteRecord, TransactionRecord, WalletRecord } from "../domain/types.js";
 import { ApiError } from "../errors.js";
 import { newId } from "../lib/ids.js";
-import { PriceBandError } from "../services/price.js";
+import { PriceBandError, type CurrentPrice } from "../services/price.js";
+import {
+  headroom,
+  overLimit,
+  type CreditContext,
+  type LimitBreached,
+} from "../domain/kyc-limits.js";
 import { holdingRef } from "../vault/mock-vault.js";
 import { partnerOf, requireOperator, requirePartner } from "./auth.js";
 import { idempotent } from "./idempotency.js";
@@ -118,6 +124,65 @@ export function partnerRoutes(ctx: AppContext): Router {
         requiredGrams: formatGrams(needed),
       });
     }
+  }
+
+  /**
+   * The wallet's credits and holding, valued at one price. Reads the chain for the balance, so
+   * call it before the synchronous claim; the claim then checks the totals again with no await.
+   */
+  async function creditContext(wallet: WalletRecord, price: CurrentPrice): Promise<CreditContext> {
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+    return {
+      creditedLast24HoursPaisa: ctx.store.creditedSince(wallet.id, hoursAgo(24)),
+      creditedLast30DaysPaisa: ctx.store.creditedSince(wallet.id, hoursAgo(24 * 30)),
+      holdingPaisa: valuePaisa(await ctx.chain.balanceOf(wallet.address), price),
+    };
+  }
+
+  /** The 24-hour and 30-day totals again, with the holding as it was read before. */
+  function refreshed(wallet: WalletRecord, c: CreditContext): CreditContext {
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+    return {
+      creditedLast24HoursPaisa: ctx.store.creditedSince(wallet.id, hoursAgo(24)),
+      creditedLast30DaysPaisa: ctx.store.creditedSince(wallet.id, hoursAgo(24 * 30)),
+      holdingPaisa: c.holdingPaisa,
+    };
+  }
+
+  const LIMIT_WORDS: Record<LimitBreached, string> = {
+    per_trade: "for one transaction",
+    per_24_hours: "for 24 hours",
+    per_30_days: "for 30 days",
+    max_holding: "for the most gold one account may hold",
+  };
+
+  /**
+   * Refuses a credit (a purchase, or gold sent to the wallet) over the wallet's KYC limits.
+   * Checked when quoting and again when executing, since other credits may land in between.
+   */
+  function requireWithinLimit(wallet: WalletRecord, creditPaisa: bigint, c: CreditContext): void {
+    const limit = ctx.settings.kycLimits[wallet.kycLevel];
+    const over = overLimit(limit, creditPaisa, c);
+    if (!over) return;
+    throw new ApiError(
+      422,
+      "limit_exceeded",
+      `Above the ${wallet.kycLevel} KYC limit ${LIMIT_WORDS[over]}`,
+      {
+        kycLevel: wallet.kycLevel,
+        limit: over,
+        perTradePkr: formatPkr(limit.perTradePaisa),
+        per24HoursPkr: formatPkr(limit.per24HoursPaisa),
+        per30DaysPkr: formatPkr(limit.per30DaysPaisa),
+        maxHoldingPkr: formatPkr(limit.maxHoldingPaisa),
+        remaining24HoursPkr: formatPkr(
+          limit.per24HoursPaisa > c.creditedLast24HoursPaisa
+            ? limit.per24HoursPaisa - c.creditedLast24HoursPaisa
+            : 0n,
+        ),
+        largestAllowedPkr: formatPkr(headroom(limit, c)),
+      },
+    );
   }
 
   function usableQuote(res: Response, id: string, side: "buy" | "sell"): QuoteRecord {
@@ -291,6 +356,7 @@ export function partnerRoutes(ctx: AppContext): Router {
         : { grams: parseGrams(body.grams as string) };
     const math = computeQuote(body.side, amount, price, ctx.settings.fees);
     if (body.side === "sell") await requireBalance(wallet, math.grams);
+    else requireWithinLimit(wallet, math.netPaisa, await creditContext(wallet, price));
 
     const now = Date.now();
     const quote: QuoteRecord = {
@@ -318,13 +384,18 @@ export function partnerRoutes(ctx: AppContext): Router {
     const { quoteId: id } = parse(ExecuteQuoteBody, req.body);
     const quote = usableQuote(res, id, "buy");
     const wallet = ownWallet(res, quote.walletId);
+    const credits = await creditContext(wallet, await ctx.price.current());
+    requireWithinLimit(wallet, BigInt(quote.netPaisa), credits);
     await requireActive(wallet);
     if (await ctx.chain.mintingPaused()) {
       throw new ApiError(409, "minting_paused", "Minting is paused");
     }
-    const txn = claimQuote(res, id, "buy", (claimed) =>
-      ctx.settlement.startMint(partnerOf(res), claimed, wallet),
-    );
+    // Checked again inside the claim, with no await before it, so two purchases sent together
+    // cannot both fit under the 24-hour limit that only one of them fits.
+    const txn = claimQuote(res, id, "buy", (claimed) => {
+      requireWithinLimit(wallet, BigInt(claimed.netPaisa), refreshed(wallet, credits));
+      return ctx.settlement.startMint(partnerOf(res), claimed, wallet);
+    });
     res.status(202).json(present(txn));
   });
 
@@ -353,7 +424,15 @@ export function partnerRoutes(ctx: AppContext): Router {
     await requireActive(from);
     await requireActive(to);
     await requireBalance(from, amount);
-    const txn = ctx.settlement.startTransfer(partnerOf(res), from, to, amount);
+    // The receiver's KYC limits apply to gold sent to them as to gold they buy; otherwise one
+    // account could buy up to its own limit and pass the gold to accounts with lower ones.
+    const price = await ctx.price.current();
+    const value = valuePaisa(amount, price);
+    const credits = await creditContext(to, price);
+    // Totals read again with nothing awaited between here and the record being saved, so two
+    // transfers sent together cannot both fit under a limit only one of them fits.
+    requireWithinLimit(to, value, refreshed(to, credits));
+    const txn = ctx.settlement.startTransfer(partnerOf(res), from, to, amount, value);
     res.status(202).json(present(txn));
   });
 

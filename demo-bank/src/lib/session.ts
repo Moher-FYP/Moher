@@ -1,33 +1,101 @@
 import "server-only";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { MoharApiError } from "@mohar/sdk";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { findCustomer, type Customer } from "./customers";
 import { getMohar } from "./mohar";
+import { readData, writeData } from "./datafile";
+import { partner } from "./partner";
+import { demoSecret } from "./secrets";
 
-export const SESSION_COOKIE = "demo_bank_customer";
+/** One cookie per partner: both apps run on localhost, and cookies ignore the port. */
+export function sessionCookie(): string {
+  return `${partner().slug}_session`;
+}
 
-/** The signed-in demo customer, or a redirect to the login screen. */
+/**
+ * The cookie holds the customer id and an HMAC of it, so a customer cannot change the id to
+ * sign in as someone else. SESSION_SECRET signs it (lib/secrets.ts: required in production).
+ * This stops a forged cookie only: the demo's login screen itself asks for no password, so it
+ * is a mock of the partner's own sign-in, not a replacement for it.
+ */
+function sign(customerId: string): string {
+  return createHmac("sha256", demoSecret("SESSION_SECRET")).update(customerId).digest("base64url");
+}
+
+export function sessionValue(customerId: string): string {
+  return `${customerId}.${sign(customerId)}`;
+}
+
+/** The customer a cookie value names, if its signature is right. */
+export function customerFromSession(value: string | undefined): Customer | undefined {
+  const dot = value?.lastIndexOf(".") ?? -1;
+  if (!value || dot <= 0) return undefined;
+  const id = value.slice(0, dot);
+  const given = Buffer.from(value.slice(dot + 1));
+  const expected = Buffer.from(sign(id));
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return undefined;
+  return findCustomer(id);
+}
+
+/** The signed-in customer, or undefined. Pages that trade use requireCustomer instead. */
+export async function currentCustomer(): Promise<Customer | undefined> {
+  return customerFromSession((await cookies()).get(sessionCookie())?.value);
+}
+
+/**
+ * The signed-in customer whose Gold Savings is open, or a redirect: to the login screen, or
+ * to the welcome screen for an application that was referred for review.
+ */
 export async function requireCustomer(): Promise<Customer> {
-  const customer = findCustomer((await cookies()).get(SESSION_COOKIE)?.value);
+  const customer = await currentCustomer();
   if (!customer) redirect("/login");
+  if (customer.onboarding?.outcome === "referred") redirect("/welcome");
   return customer;
 }
 
-// Bank-side mapping customer -> MOHAR wallet id. A real bank keeps this in its core banking
-// system; the demo keeps it in memory and re-registers if MOHAR forgot the wallet (e.g. after
-// the local chain was restarted).
-const globalWallets = globalThis as typeof globalThis & { __demoWallets?: Map<string, string> };
-const walletIds: Map<string, string> = (globalWallets.__demoWallets ??= new Map());
+// Bank-side mapping customer -> MOHAR wallet id, saved with the partner's other records
+// (lib/datafile.ts). If MOHAR no longer knows a saved wallet (its data was reset), withWallet
+// registers the customer again; registering the same customer twice returns the same wallet.
+const globalWallets = globalThis as typeof globalThis & {
+  __demoWallets?: Map<string, Map<string, string>>;
+};
+const walletsBySlug = (globalWallets.__demoWallets ??= new Map());
+
+function walletMap(): Map<string, string> {
+  const slug = partner().slug;
+  let map = walletsBySlug.get(slug);
+  if (!map) {
+    map = new Map(Object.entries(readData<Record<string, string>>("wallets", {})));
+    walletsBySlug.set(slug, map);
+  }
+  return map;
+}
+
+const walletIds = {
+  get: (customerId: string) => walletMap().get(customerId),
+  has: (customerId: string) => walletMap().has(customerId),
+  entries: () => walletMap().entries(),
+  set(customerId: string, walletId: string) {
+    walletMap().set(customerId, walletId);
+    writeData("wallets", Object.fromEntries(walletMap()));
+  },
+  delete(customerId: string) {
+    walletMap().delete(customerId);
+    writeData("wallets", Object.fromEntries(walletMap()));
+  },
+};
 
 async function registerWallet(customer: Customer): Promise<string> {
+  const p = partner();
   const wallet = await getMohar().registerWallet({
-    externalCustomerId: `demo-bank-${customer.id}`,
+    externalCustomerId: `${p.slug}-${customer.id}`,
     kyc: {
-      // The bank's own KYC record id. MOHAR stores only its hash.
-      reference: `DEMOBANK-KYC-${customer.id.toUpperCase()}`,
-      level: "standard",
-      verifiedAt: "2026-09-01T09:00:00.000Z",
+      // The partner's own KYC record id, never the CNIC. MOHAR stores only a keyed hash of it.
+      reference: `${p.kycPrefix}-${customer.id.toUpperCase()}`,
+      level: customer.kycLevel,
+      verifiedAt: customer.onboarding?.openedAt ?? "2026-09-01T09:00:00.000Z",
     },
   });
   walletIds.set(customer.id, wallet.id);
@@ -60,7 +128,7 @@ export async function withWallet<T>(
 
 /** Which demo customer a MOHAR wallet belongs to, if the bank has opened it this session. */
 export function customerForWallet(walletId: string | undefined): Customer | undefined {
-  for (const [customerId, id] of walletIds) {
+  for (const [customerId, id] of walletIds.entries()) {
     if (id === walletId) return findCustomer(customerId);
   }
   return undefined;

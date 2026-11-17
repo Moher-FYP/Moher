@@ -5,7 +5,7 @@ import type { Partner } from "./domain/types.js";
  * has read the repo knows them, so they are only acceptable on a local Anvil chain.
  */
 export const LOCAL_ONLY = {
-  partnerApiKeys: "mk_test_local=demo-bank",
+  partnerApiKeys: "mk_test_local=demo-bank,mk_test_wallet=moher-wallet",
   webhookSecret: "whsec_local_dev_only",
   devApiKey: "mk_dev_local",
   kycHashSecret: "kyc_local_dev_only",
@@ -13,6 +13,7 @@ export const LOCAL_ONLY = {
 
 const KNOWN_TO_EVERYONE = new Set<string>([
   "mk_test_local",
+  "mk_test_wallet",
   LOCAL_ONLY.webhookSecret,
   LOCAL_ONLY.devApiKey,
   LOCAL_ONLY.kycHashSecret,

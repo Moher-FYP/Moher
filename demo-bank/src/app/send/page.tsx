@@ -2,7 +2,8 @@ import { connection } from "next/server";
 import { sendGold } from "@/app/actions";
 import { AppHeader } from "@/components/AppHeader";
 import { FormError, fieldClass, primaryButton } from "@/components/ui";
-import { CUSTOMERS } from "@/lib/customers";
+import { allCustomers } from "@/lib/customers";
+import { partner } from "@/lib/partner";
 import { grams } from "@/lib/format";
 import { getMohar } from "@/lib/mohar";
 import { requireCustomer, withWallet } from "@/lib/session";
@@ -12,7 +13,10 @@ export default async function Send({ searchParams }: PageProps<"/send">) {
   const customer = await requireCustomer();
   const { error } = await searchParams;
   const balance = await withWallet(customer, (walletId) => getMohar().getBalance(walletId));
-  const recipients = CUSTOMERS.filter((c) => c.id !== customer.id);
+  // Gold moves between customers of the same partner, whose wallets MOHAR knows by name.
+  const recipients = allCustomers().filter(
+    (c) => c.id !== customer.id && c.onboarding?.outcome !== "referred",
+  );
 
   return (
     <>
@@ -31,11 +35,11 @@ export default async function Send({ searchParams }: PageProps<"/send">) {
                 name="recipient"
                 value={r.id}
                 defaultChecked={i === 0}
-                className="accent-[#0e5a43]"
+                className="accent-bank"
               />
               <span>
                 <span className="block font-semibold">{r.name}</span>
-                <span className="text-sm text-ink-soft">Demo Bank customer</span>
+                <span className="text-sm text-ink-soft">{partner().name} customer</span>
               </span>
             </label>
           ))}

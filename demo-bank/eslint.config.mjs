@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The wallet partner's build (pnpm dev:wallet).
+    ".next-wallet/**",
   ]),
 ]);
 

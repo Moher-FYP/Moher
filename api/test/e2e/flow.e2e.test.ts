@@ -168,6 +168,62 @@ describe.skipIf(!hasFoundry)("MOHAR end to end (Anvil + API + SDK)", () => {
     expect(after - before).toBe(parseGrams(quote.grams));
   });
 
+  it("holds each customer to the limits of their KYC level", async () => {
+    // Asaan KYC, like a branchless Level 0 wallet: Rs 25,000 a day, Rs 50,000 in 30 days.
+    const basic = await mohar.registerWallet(
+      {
+        externalCustomerId: "student-01",
+        kyc: { reference: "BANK-KYC-ST01", level: "asaan", verifiedAt: "2026-11-01T09:00:00Z" },
+      },
+      { idempotencyKey: "register-student-01" },
+    );
+    const tooBig = mohar.createQuote({ walletId: basic.id, side: "buy", amountPkr: "30000.00" });
+    await expect(tooBig).rejects.toMatchObject({
+      status: 422,
+      code: "limit_exceeded",
+      details: { limit: "per_trade", largestAllowedPkr: "25000.00" },
+    });
+
+    const quote = await mohar.createQuote({
+      walletId: basic.id,
+      side: "buy",
+      amountPkr: "15000.00",
+    });
+    await settle(await mohar.mint({ quoteId: quote.id }, { idempotencyKey: "student-buy-1" }));
+    // Rs 15,000 bought today, so Rs 15,000 more would pass Rs 25,000.
+    const overDay = mohar.createQuote({ walletId: basic.id, side: "buy", amountPkr: "15000.00" });
+    await expect(overDay).rejects.toMatchObject({
+      status: 422,
+      code: "limit_exceeded",
+      details: { kycLevel: "asaan", limit: "per_24_hours", remaining24HoursPkr: "10000.00" },
+    });
+
+    // Gold sent to the student counts as money in: Alice (standard KYC) cannot pass her own
+    // headroom to an account with a lower limit. Rs 12,000 of gold would take the student's
+    // day past Rs 25,000, so it is refused...
+    const price = await mohar.getPrice();
+    const gramsFor = (pkr: number) => (pkr / Number(price.pricePerGramPkr)).toFixed(8);
+    const sendTooMuch = mohar.transfer({
+      fromWalletId: alice,
+      toWalletId: basic.id,
+      grams: gramsFor(12_000),
+    });
+    await expect(sendTooMuch).rejects.toMatchObject({
+      status: 422,
+      code: "limit_exceeded",
+      details: { limit: "per_24_hours" },
+    });
+    // ...and a small gift within the student's day still goes through.
+    const gift = await settle(
+      await mohar.transfer({ fromWalletId: alice, toWalletId: basic.id, grams: gramsFor(5_000) }),
+    );
+    expect(gift.status).toBe("confirmed");
+
+    // Selling is never limited.
+    const sell = await mohar.createQuote({ walletId: basic.id, side: "sell", grams: "0.1" });
+    expect(sell.side).toBe("sell");
+  });
+
   it("sends a signed webhook the bank can verify with the SDK", async () => {
     await waitFor(async () => webhooks.length > 0);
     const hook = webhooks[0]!;
