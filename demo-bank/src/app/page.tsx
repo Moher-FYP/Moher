@@ -2,7 +2,8 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { AppHeader } from "@/components/AppHeader";
 import { Seal } from "@/components/Seal";
-import { grams, pkr, when } from "@/lib/format";
+import { MoharApiError } from "@mohar/sdk";
+import { errorMessage, grams, pkr, when } from "@/lib/format";
 import { getMohar } from "@/lib/mohar";
 import { requireCustomer, withWallet } from "@/lib/session";
 
@@ -21,16 +22,26 @@ export default async function Home() {
       ]);
       return { walletId, balance, activity: activity.data };
     });
-  } catch {
+  } catch (error) {
+    // MOHAR answered with an error (a refused key, a conflict…), or did not answer at all.
+    const answered = error instanceof MoharApiError;
     return (
       <>
         <AppHeader customer={customer} />
         <section className="space-y-3 p-6">
           <h1 className="font-display text-2xl font-semibold">Gold Savings is unavailable</h1>
-          <p className="text-ink-soft">
-            The bank can&apos;t reach its gold provider right now. Start the MOHAR API (
-            <code className="font-mono text-sm">pnpm --filter @mohar/api dev</code>) and refresh.
-          </p>
+          {answered ? (
+            <p className="text-ink-soft">
+              The gold provider refused the request: {errorMessage(error)} (
+              <code className="font-mono text-sm">{error.code}</code>). The details are under Behind
+              the scenes.
+            </p>
+          ) : (
+            <p className="text-ink-soft">
+              The bank can&apos;t reach its gold provider right now. Start the MOHAR API (
+              <code className="font-mono text-sm">pnpm --filter @mohar/api dev</code>) and refresh.
+            </p>
+          )}
         </section>
       </>
     );
