@@ -2,12 +2,22 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { findCustomer, type Customer } from "@/lib/customers";
+import { randomBytes } from "node:crypto";
+import { addCustomer, findCustomer, type Customer } from "@/lib/customers";
 import { errorMessage } from "@/lib/format";
 import { getMohar, moharApiUrl, moharDevKey } from "@/lib/mohar";
 import { loggingFetch } from "@/lib/devlog";
 import { recallQuote, rememberQuote } from "@/lib/quotes";
-import { SESSION_COOKIE, requireCustomer, walletIdFor, withWallet } from "@/lib/session";
+import { maskCnic, maskPhone, readApplication, riskBand, screen } from "@/lib/onboarding";
+import { partner } from "@/lib/partner";
+import { raastLabel, rememberPayment, type Payment } from "@/lib/payments";
+import {
+  requireCustomer,
+  sessionCookie,
+  sessionValue,
+  walletIdFor,
+  withWallet,
+} from "@/lib/session";
 
 const PKR = /^\d+(\.\d{1,2})?$/;
 const GRAMS = /^\d+(\.\d{1,8})?$/;
@@ -27,21 +37,70 @@ function back(path: string, error: unknown): never {
 
 // ------------------------------------------------------------------ session
 
-export async function signIn(formData: FormData): Promise<void> {
-  const customer = findCustomer(String(formData.get("customer")));
-  if (!customer) back("/login", new Error("Choose a customer to continue."));
-  (await cookies()).set(SESSION_COOKIE, customer.id, {
+async function startSession(customer: Customer): Promise<void> {
+  (await cookies()).set(sessionCookie(), sessionValue(customer.id), {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
   });
+}
+
+export async function signIn(formData: FormData): Promise<void> {
+  const customer = findCustomer(String(formData.get("customer")));
+  if (!customer) back("/login", new Error("Choose a customer to continue."));
+  await startSession(customer);
+  if (customer.onboarding?.outcome === "referred") redirect("/welcome");
   await walletIdFor(customer).catch(() => undefined); // open Gold Savings on first sign-in
   redirect("/");
 }
 
 export async function signOut(): Promise<void> {
-  (await cookies()).delete(SESSION_COOKIE);
+  (await cookies()).delete(sessionCookie());
   redirect("/login");
+}
+
+/**
+ * Opens a new customer's account: checks the form, screens the name, scores the risk, and
+ * for low and medium risk opens Gold Savings with MOHAR. All of it simulated (lib/onboarding).
+ */
+export async function openAccount(formData: FormData): Promise<void> {
+  const read = readApplication(formData, new Date());
+  if (!read.ok) back("/signup", new Error(read.problem));
+  const { application } = read;
+
+  if (screen(application) === "match") {
+    // A real partner files a report and tells the customer nothing more specific.
+    back("/signup", new Error("We cannot open this account online. Please visit a branch."));
+  }
+
+  const risk = riskBand(application);
+  const firstName = application.fullName.split(" ")[0] ?? application.fullName;
+  const customer: Customer = {
+    id: `c${randomBytes(4).toString("hex")}`,
+    name: application.fullName,
+    firstName,
+    description: `Opened online on ${new Date().toLocaleDateString("en-PK", { day: "numeric", month: "short" })}`,
+    kycLevel: partner().newCustomerKyc,
+    onboarding: {
+      openedAt: new Date().toISOString(),
+      cnicMasked: maskCnic(application.cnic),
+      phoneMasked: maskPhone(application.phone),
+      aml: "clear",
+      riskBand: risk.band,
+      outcome: risk.band === "high" ? "referred" : "opened",
+    },
+  };
+  addCustomer(customer);
+  await startSession(customer);
+
+  if (customer.onboarding?.outcome === "opened") {
+    try {
+      await walletIdFor(customer); // MOHAR registers the wallet on-chain
+    } catch (error) {
+      back("/welcome", error);
+    }
+  }
+  redirect("/welcome");
 }
 
 // ------------------------------------------------------------------ trading
@@ -90,6 +149,19 @@ export async function confirmQuote(formData: FormData): Promise<void> {
   const quote = recallQuote(quoteId, customer.id);
   if (!quote) back("/", new Error("That price has expired. Start again."));
 
+  // Where the money comes from (buy) or goes to (sell): the partner's own account, or Raast.
+  let payment: Payment = { method: "own", label: partner().ownFunds };
+  if (formData.get("payWith") === "raast") {
+    const label = raastLabel(String(formData.get("raastId") ?? ""));
+    if (!label) {
+      back(
+        `/quote/${quoteId}`,
+        new Error("Enter a Raast ID: a mobile number (0300 1234567) or an IBAN (PK…)."),
+      );
+    }
+    payment = { method: "raast", label };
+  }
+
   let transactionId: string;
   try {
     // The quote id doubles as the idempotency key: a double-click cannot buy twice.
@@ -102,6 +174,7 @@ export async function confirmQuote(formData: FormData): Promise<void> {
   } catch (error) {
     back(`/quote/${quoteId}`, error);
   }
+  rememberPayment(transactionId, payment);
   redirect(`/tx/${transactionId}`);
 }
 

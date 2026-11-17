@@ -1,33 +1,75 @@
 import "server-only";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { MoharApiError } from "@mohar/sdk";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { findCustomer, type Customer } from "./customers";
 import { getMohar } from "./mohar";
+import { partner } from "./partner";
 
-export const SESSION_COOKIE = "demo_bank_customer";
+/** One cookie per partner: both apps run on localhost, and cookies ignore the port. */
+export function sessionCookie(): string {
+  return `${partner().slug}_session`;
+}
 
-/** The signed-in demo customer, or a redirect to the login screen. */
+/**
+ * The cookie holds the customer id and an HMAC of it, so a customer cannot change the id to
+ * sign in as someone else. SESSION_SECRET signs it; the fallback is for local demos only.
+ */
+function sessionSecret(): string {
+  return process.env.SESSION_SECRET ?? `local-demo-only-${partner().slug}`;
+}
+
+function sign(customerId: string): string {
+  return createHmac("sha256", sessionSecret()).update(customerId).digest("base64url");
+}
+
+export function sessionValue(customerId: string): string {
+  return `${customerId}.${sign(customerId)}`;
+}
+
+/** The customer a cookie value names, if its signature is right. */
+export function customerFromSession(value: string | undefined): Customer | undefined {
+  const dot = value?.lastIndexOf(".") ?? -1;
+  if (!value || dot <= 0) return undefined;
+  const id = value.slice(0, dot);
+  const given = Buffer.from(value.slice(dot + 1));
+  const expected = Buffer.from(sign(id));
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return undefined;
+  return findCustomer(id);
+}
+
+/** The signed-in customer, or undefined. Pages that trade use requireCustomer instead. */
+export async function currentCustomer(): Promise<Customer | undefined> {
+  return customerFromSession((await cookies()).get(sessionCookie())?.value);
+}
+
+/**
+ * The signed-in customer whose Gold Savings is open, or a redirect: to the login screen, or
+ * to the welcome screen for an application that was referred for review.
+ */
 export async function requireCustomer(): Promise<Customer> {
-  const customer = findCustomer((await cookies()).get(SESSION_COOKIE)?.value);
+  const customer = await currentCustomer();
   if (!customer) redirect("/login");
+  if (customer.onboarding?.outcome === "referred") redirect("/welcome");
   return customer;
 }
 
 // Bank-side mapping customer -> MOHAR wallet id. A real bank keeps this in its core banking
-// system; the demo keeps it in memory and re-registers if MOHAR forgot the wallet (e.g. after
-// the local chain was restarted).
+// system; the demo keeps it in memory and asks MOHAR again after a restart (registering the
+// same customer twice returns the wallet MOHAR already has).
 const globalWallets = globalThis as typeof globalThis & { __demoWallets?: Map<string, string> };
 const walletIds: Map<string, string> = (globalWallets.__demoWallets ??= new Map());
 
 async function registerWallet(customer: Customer): Promise<string> {
+  const p = partner();
   const wallet = await getMohar().registerWallet({
-    externalCustomerId: `demo-bank-${customer.id}`,
+    externalCustomerId: `${p.slug}-${customer.id}`,
     kyc: {
-      // The bank's own KYC record id. MOHAR stores only its hash.
-      reference: `DEMOBANK-KYC-${customer.id.toUpperCase()}`,
-      level: "standard",
-      verifiedAt: "2026-09-01T09:00:00.000Z",
+      // The partner's own KYC record id, never the CNIC. MOHAR stores only a keyed hash of it.
+      reference: `${p.kycPrefix}-${customer.id.toUpperCase()}`,
+      level: customer.kycLevel,
+      verifiedAt: customer.onboarding?.openedAt ?? "2026-09-01T09:00:00.000Z",
     },
   });
   walletIds.set(customer.id, wallet.id);

@@ -6,6 +6,8 @@ contracts/broadcast/
 contracts/deployments/
 **/dist/
 **/.next/
+**/.next-wallet/
+demo-bank/.data/
 # Written by `next dev`; reformatting it just causes churn.
 demo-bank/AGENTS.md
 demo-bank/CLAUDE.md

@@ -34,7 +34,7 @@ type Entry = SdkCall | WebhookReceived;
  * signed webhooks MOHAR sends back. Lets examiners see the B2B integration while the customer
  * app stays free of any MOHAR branding.
  */
-export function DevPanel() {
+export function DevPanel({ partnerName }: { partnerName: string }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [pending, startTransition] = useTransition();
   const [priceError, setPriceError] = useState<string>();
@@ -80,9 +80,8 @@ export function DevPanel() {
           Behind the scenes
         </h2>
         <p className="mt-1 max-w-prose text-ink-soft">
-          The customer only ever sees Demo Bank. Underneath, the bank&apos;s server calls MOHAR
-          through the SDK, and MOHAR answers with signed webhooks. Everything appears here as it
-          happens.
+          The customer only ever sees {partnerName}. Underneath, its server calls MOHAR through the
+          SDK, and MOHAR answers with signed webhooks. Everything appears here as it happens.
         </p>
       </div>
 

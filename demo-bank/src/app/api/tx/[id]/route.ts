@@ -1,12 +1,11 @@
 import { MoharApiError } from "@mohar/sdk";
 import { cookies } from "next/headers";
-import { findCustomer } from "@/lib/customers";
 import { getMoharQuiet } from "@/lib/mohar";
-import { SESSION_COOKIE, canView } from "@/lib/session";
+import { canView, customerFromSession, sessionCookie } from "@/lib/session";
 
 /** Status polling for the transaction screen. The browser never talks to MOHAR directly. */
 export async function GET(_request: Request, { params }: RouteContext<"/api/tx/[id]">) {
-  const customer = findCustomer((await cookies()).get(SESSION_COOKIE)?.value);
+  const customer = customerFromSession((await cookies()).get(sessionCookie())?.value);
   if (!customer) {
     return Response.json({ error: "Sign in first" }, { status: 401 });
   }

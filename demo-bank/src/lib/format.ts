@@ -33,6 +33,8 @@ export function when(iso: string): string {
 }
 
 export function errorMessage(error: unknown): string {
+  const limit = limitMessage(error);
+  if (limit) return limit;
   if (error && typeof error === "object" && "message" in error) {
     return String((error as { message: unknown }).message);
   }
@@ -66,4 +68,16 @@ const usdFormat = new Intl.NumberFormat("en-US", {
 
 export function usd(amount: string): string {
   return `US$ ${usdFormat.format(Number(amount))}`;
+}
+
+/** MOHAR's limit_exceeded error, in words a customer understands. */
+function limitMessage(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const { code, details } = error as { code?: unknown; details?: Record<string, unknown> };
+  if (code !== "limit_exceeded" || !details) return undefined;
+  const perTrade = pkr(String(details.perTradePkr));
+  const perDay = pkr(String(details.per24HoursPkr));
+  // The most one purchase can be now: the per-trade limit, or less if the day is nearly used.
+  const most = Math.min(Number(details.perTradePkr), Number(details.remaining24HoursPkr));
+  return `That is over your account's limit: ${perTrade} per purchase and ${perDay} in any 24 hours. The most you can buy now is ${pkr(String(most))}.`;
 }

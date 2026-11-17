@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { signOut } from "@/app/actions";
 import type { Customer } from "@/lib/customers";
+import { partner } from "@/lib/partner";
 
 /** Bank chrome: a back link or the bank name, plus who is signed in. */
 export function AppHeader({
@@ -12,6 +13,7 @@ export function AppHeader({
   title?: string;
   backHref?: string;
 }) {
+  const { name, initials } = partner();
   return (
     <header className="flex items-center justify-between gap-3 bg-bank px-5 py-4 text-white">
       <div className="flex min-w-0 items-center gap-3">
@@ -28,10 +30,10 @@ export function AppHeader({
             aria-hidden="true"
             className="grid size-8 place-items-center rounded-lg bg-white font-display text-sm font-bold text-bank"
           >
-            DB
+            {initials}
           </span>
         )}
-        <span className="truncate font-display text-lg font-semibold">{title ?? "Demo Bank"}</span>
+        <span className="truncate font-display text-lg font-semibold">{title ?? name}</span>
       </div>
       <form action={signOut} className="flex items-center gap-2 text-sm text-white/80 print:hidden">
         <span className="hidden sm:inline">{customer.firstName}</span>

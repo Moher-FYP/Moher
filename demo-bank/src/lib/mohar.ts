@@ -1,6 +1,7 @@
 import "server-only";
 import { MoharClient } from "@mohar/sdk";
 import { loggingFetch } from "./devlog";
+import { partner } from "./partner";
 
 let client: MoharClient | undefined;
 
@@ -11,8 +12,8 @@ let client: MoharClient | undefined;
  */
 export function getMohar(): MoharClient {
   client ??= new MoharClient({
-    apiKey: process.env.MOHAR_API_KEY ?? "mk_test_local",
-    baseUrl: process.env.MOHAR_API_URL ?? "http://localhost:4000",
+    apiKey: moharApiKey(),
+    baseUrl: moharApiUrl(),
     fetch: loggingFetch,
   });
   return client;
@@ -30,8 +31,9 @@ export function moharApiUrl(): string {
   return process.env.MOHAR_API_URL ?? "http://localhost:4000";
 }
 
+/** This partner's MOHAR API key. The fallback is the API's public local default. */
 export function moharApiKey(): string {
-  return process.env.MOHAR_API_KEY ?? "mk_test_local";
+  return process.env.MOHAR_API_KEY ?? partner().localApiKey;
 }
 
 /**
