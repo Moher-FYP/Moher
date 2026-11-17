@@ -40,7 +40,9 @@ const PARTNERS: Record<Partner["kind"], Partner> = {
     newCustomerKyc: "standard",
     kycLabel: "Full account (standard KYC)",
     ownFunds: "Moher Bank current account",
-    kycPrefix: "MB-KYC",
+    // Kept from before the wallet partner existed: Hassan's and Bushra's wallets on Amoy were
+    // registered with this reference, and MOHAR refuses the same customer with a new one.
+    kycPrefix: "DEMOBANK-KYC",
     localApiKey: "mk_test_local",
   },
   wallet: {
