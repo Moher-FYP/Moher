@@ -9,6 +9,7 @@ export const LOCAL_ONLY = {
   webhookSecret: "whsec_local_dev_only",
   devApiKey: "mk_dev_local",
   kycHashSecret: "kyc_local_dev_only",
+  portalSecretKey: "portal_local_dev_only",
 } as const;
 
 const KNOWN_TO_EVERYONE = new Set<string>([
@@ -17,6 +18,7 @@ const KNOWN_TO_EVERYONE = new Set<string>([
   LOCAL_ONLY.webhookSecret,
   LOCAL_ONLY.devApiKey,
   LOCAL_ONLY.kycHashSecret,
+  LOCAL_ONLY.portalSecretKey,
 ]);
 
 /** Shortest secret accepted off the local chain. `openssl rand -hex 24` gives 48 characters. */
@@ -31,6 +33,8 @@ export interface SecretsInUse {
   devRoutes: boolean;
   /** Keys the on-chain KYC fingerprints (domain/kyc.ts). */
   kycHashSecret?: string | undefined;
+  /** Seals portal users' authenticator secrets (portal/sealed.ts). */
+  portalSecretKey?: string | undefined;
 }
 
 /**
@@ -76,6 +80,13 @@ export function findWeakSecrets(inUse: SecretsInUse): string[] {
   } else {
     const reason = weak(inUse.kycHashSecret);
     if (reason) problems.push(`KYC_HASH_SECRET: ${reason}`);
+  }
+
+  if (!inUse.portalSecretKey) {
+    problems.push("PORTAL_SECRET_KEY: required. It seals portal users' one-time code secrets");
+  } else {
+    const reason = weak(inUse.portalSecretKey);
+    if (reason) problems.push(`PORTAL_SECRET_KEY: ${reason}`);
   }
 
   if (inUse.devRoutes) {

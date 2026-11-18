@@ -4,6 +4,7 @@ import type { Response } from "express";
 export type ErrorCode =
   | "invalid_request"
   | "unauthorized"
+  | "forbidden"
   | "not_found"
   | "quote_expired"
   | "price_moved"

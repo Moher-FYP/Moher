@@ -82,6 +82,13 @@ export class Store {
     return Object.values(this.state.wallets);
   }
 
+  /** One partner's wallets, newest first. */
+  walletsOf(partnerSlug: string): WalletRecord[] {
+    return Object.values(this.state.wallets)
+      .filter((w) => w.partnerSlug === partnerSlug)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+  }
+
   // ---------------------------------------------------------------- quotes
 
   saveQuote(quote: QuoteRecord): void {
@@ -136,7 +143,13 @@ export class Store {
     };
   }
 
-  /** What a wallet has paid for gold since `sinceIso`, in paisa: purchases not failed. */
+  /** One partner's transactions, newest first. */
+  transactionsOf(partnerSlug: string): TransactionRecord[] {
+    return Object.values(this.state.transactions)
+      .filter((t) => t.partnerSlug === partnerSlug)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+  }
+
   /**
    * Rupees credited to a wallet since a time: its purchases, and gold sent to it valued when it
    * was sent. Pending and confirmed count; failed never happened. KYC limits are on money in,

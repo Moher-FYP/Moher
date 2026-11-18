@@ -3,6 +3,7 @@ import type { KycLimits } from "./domain/kyc-limits.js";
 import type { MoharChain } from "./chain/mohar-chain.js";
 import type { FeeRates } from "./domain/pricing.js";
 import type { PartnerDirectory } from "./http/auth.js";
+import type { PortalContext } from "./portal/routes.js";
 import type { SerialQueue } from "./lib/queue.js";
 import type { PriceService } from "./services/price.js";
 import type { SettlementService } from "./services/settlement.js";
@@ -17,6 +18,8 @@ export interface AppContext {
   price: PriceService;
   settlement: SettlementService;
   partners: PartnerDirectory;
+  /** The partner portal's users, sessions and logs. Absent: no /portal routes. */
+  portal?: PortalContext;
   /** The relayer queue: every on-chain write goes through it. */
   queue: SerialQueue;
   /** Custodial address for the n-th customer wallet. */

@@ -88,6 +88,17 @@ const ConfigSchema = z.object({
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(600),
   /** New customer wallets each partner may register per hour. Each one costs the relayer gas. */
   WALLET_REGISTRATIONS_PER_HOUR: z.coerce.number().int().min(1).default(120),
+  /**
+   * Where the partner portal is served from, comma-separated. Sign-ins and changes from any
+   * other origin are refused. The portal's cookie is marked Secure unless every origin is
+   * http://localhost.
+   */
+  PORTAL_ORIGINS: z.string().default("http://localhost:3002"),
+  /**
+   * Seals each portal user's authenticator secret in the data file. Local Anvil falls back to
+   * a public default; elsewhere it must be set (openssl rand -hex 32).
+   */
+  PORTAL_SECRET_KEY: z.string().min(16).optional(),
   /** Where the JSON store lives. ":memory:" keeps everything in memory (tests). */
   DATA_DIR: z.string().default(".data"),
   /** Enables /dev routes (move the mock gold price). Defaults to on for local chains. */

@@ -484,6 +484,7 @@ export interface components {
         code:
           | "invalid_request"
           | "unauthorized"
+          | "forbidden"
           | "not_found"
           | "quote_expired"
           | "price_moved"

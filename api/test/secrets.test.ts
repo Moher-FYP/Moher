@@ -14,12 +14,18 @@ const URLS = "bank-a=https://a.example/hooks,bank-b=https://b.example/hooks";
 
 function check(
   directory: PartnerDirectory,
-  dev: { devRoutes: boolean; devApiKey?: string; kycHashSecret?: string | undefined },
+  dev: {
+    devRoutes: boolean;
+    devApiKey?: string;
+    kycHashSecret?: string | undefined;
+    portalSecretKey?: string | undefined;
+  },
 ) {
   return findWeakSecrets({
     apiKeys: directory.apiKeys(),
     partners: directory.all(),
     kycHashSecret: "kyc_dddddddddddddddddddddddd",
+    portalSecretKey: "portal_eeeeeeeeeeeeeeeeeeeeeeee",
     ...dev,
   });
 }
@@ -126,5 +132,18 @@ describe("webhooks per partner", () => {
     expect(verify(SECRET_A).type).toBe("transaction.confirmed");
     // Bank B knows only its own secret, so it cannot produce or pass off an event as MOHAR's to A.
     expect(() => verify(SECRET_B)).toThrow();
+  });
+});
+
+describe("portal secret key", () => {
+  const directory = new PartnerDirectory(`${KEY_A}=bank-a`, "", "");
+
+  it("is required, and the repo's default is refused", () => {
+    expect(check(directory, { devRoutes: false, portalSecretKey: undefined })).toEqual([
+      expect.stringMatching(/^PORTAL_SECRET_KEY: required/),
+    ]);
+    expect(
+      check(directory, { devRoutes: false, portalSecretKey: LOCAL_ONLY.portalSecretKey }),
+    ).toEqual([expect.stringMatching(/^PORTAL_SECRET_KEY: is the repo's local default/)]);
   });
 });

@@ -1,0 +1,711 @@
+openapi: 3.1.0
+info:
+  title: MOHAR Partner Portal API
+  version: 0.1.0-draft
+  summary: Routes for the partner portal, where a partner's staff run their MOHAR integration.
+  description: |
+    The portal is for **people**, not servers. A partner's servers keep using the Partner API
+    (`docs/openapi.yaml`) with an API key; the portal signs in a person and keeps a session.
+    The two never mix: a session cannot call `/v1`, and an API key cannot call `/portal/v1`.
+
+    ## Signing in
+    Email, password and a one-time code from an authenticator app (RFC 6238, 30-second steps,
+    6 digits). A code works once. A successful sign-in sets the `mohar_portal` cookie
+    (`HttpOnly`, `SameSite=Strict`, `Secure` except on `http://localhost`). The session ends
+    after 15 minutes without a request, after 8 hours whatever happens, or on sign-out.
+
+    Wrong attempts slow down further attempts on that account: after 5 failures each try waits
+    longer (1 second, doubling, up to 15 minutes) and the API answers `429` with `Retry-After`.
+    After 20 failures in a row the account is disabled until an operator re-enables it.
+    Attempts are also limited per IP address.
+
+    ## Changes
+    Every `POST`, `PUT` and `DELETE` must carry an `Origin` header that matches the portal's
+    own address (`PORTAL_ORIGINS`). This, with `SameSite=Strict`, stops another site making a
+    signed-in browser send a change.
+
+    ## Roles and partners
+    A user belongs to one partner and has one role: `viewer`, `developer`, `compliance`, or
+    `operator` (MOHAR staff, no partner). The partner always comes from the session, never from
+    the request: another partner's wallet or transaction answers `404`, as if it did not exist.
+
+    | Role       | Can                                                    |
+    |------------|--------------------------------------------------------|
+    | viewer     | Read the overview, wallets, transactions and limits    |
+    | developer  | Viewer, plus API keys and webhooks                     |
+    | compliance | Viewer, plus the audit log, exports and freeze requests |
+    | operator   | MOHAR's admin routes, for every partner                |
+
+    ## Status
+    Part 1 of the portal build (sign-in, read routes, audit log). API keys, webhooks and
+    freezes follow in part 2.
+  contact:
+    name: MOHAR FYP team (FAST-NUCES)
+servers:
+  - url: http://localhost:4000
+    description: Local development
+security:
+  - session: []
+tags:
+  - name: Session
+  - name: Partner data
+  - name: Compliance
+
+paths:
+  /portal/v1/session:
+    post:
+      tags: [Session]
+      operationId: signIn
+      summary: Sign in
+      description: |
+        Checks the password and the one-time code together and gives the same answer whichever
+        was wrong, so the response does not reveal which part an attacker has right.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignInRequest"
+      responses:
+        "200":
+          description: Signed in. Sets the `mohar_portal` cookie.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags: [Session]
+      operationId: signOut
+      summary: Sign out
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+      responses:
+        "204":
+          description: Signed out. Clears the cookie.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/me:
+    get:
+      tags: [Session]
+      operationId: getMe
+      summary: The signed-in user
+      responses:
+        "200":
+          description: The user and when the session ends
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /portal/v1/overview:
+    get:
+      tags: [Partner data]
+      operationId: getOverview
+      summary: Figures for the overview page
+      description: Role `viewer` or above, partner users only.
+      responses:
+        "200":
+          description: The partner's figures
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Overview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/wallets:
+    get:
+      tags: [Partner data]
+      operationId: listPortalWallets
+      summary: The partner's customer wallets
+      description: Newest first. Role `viewer` or above.
+      parameters:
+        - name: q
+          in: query
+          description: Part of a customer reference, a wallet id or an address.
+          schema:
+            type: string
+            maxLength: 128
+        - name: kycLevel
+          in: query
+          schema:
+            $ref: "#/components/schemas/KycLevel"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of wallets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalWalletList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/wallets/{walletId}:
+    get:
+      tags: [Partner data]
+      operationId: getPortalWallet
+      summary: One wallet, its balance and how much of each KYC limit it has used
+      parameters:
+        - name: walletId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^wal_[A-Za-z0-9]+$"
+      responses:
+        "200":
+          description: The wallet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalWalletDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /portal/v1/transactions:
+    get:
+      tags: [Partner data]
+      operationId: listPortalTransactions
+      summary: The partner's transactions
+      description: Newest first. Role `viewer` or above.
+      parameters:
+        - name: walletId
+          in: query
+          schema:
+            type: string
+            pattern: "^wal_[A-Za-z0-9]+$"
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [mint, burn, transfer]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, submitted, confirmed, failed]
+        - name: from
+          in: query
+          description: Created at or after this time.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: Created before this time.
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of transactions
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi.yaml#/components/schemas/TransactionList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/transactions.csv:
+    get:
+      tags: [Compliance]
+      operationId: exportTransactions
+      summary: Export transactions as CSV
+      description: |
+        Role `compliance`. Takes the same filters as the list, at most 10,000 rows. Every
+        export is written to the audit log.
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [mint, burn, transfer]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, submitted, confirmed, failed]
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: CSV, one row per transaction
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/transactions/{transactionId}:
+    get:
+      tags: [Partner data]
+      operationId: getPortalTransaction
+      summary: One transaction, with its quote
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^txn_[A-Za-z0-9]+$"
+      responses:
+        "200":
+          description: The transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalTransactionDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /portal/v1/limits:
+    get:
+      tags: [Partner data]
+      operationId: getLimits
+      summary: KYC limits per level and how many customers are at each
+      responses:
+        "200":
+          description: The limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Limits"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/audit:
+    get:
+      tags: [Compliance]
+      operationId: listAudit
+      summary: The partner's audit log
+      description: |
+        Role `compliance` (own partner) or `operator` (every partner). Newest first. Every
+        change made in the portal, and every sign-in, refusal and export.
+      parameters:
+        - name: log
+          in: query
+          description: "`audit` (changes people made) or `security` (sign-ins and refusals)."
+          schema:
+            type: string
+            enum: [audit, security]
+            default: audit
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/audit/verify:
+    get:
+      tags: [Compliance]
+      operationId: verifyAudit
+      summary: Check that neither log has been edited
+      description: |
+        Each entry stores the SHA-256 of the entry before it. Recomputes both chains and reports
+        the first entry that does not match. Role `compliance` or `operator`.
+      responses:
+        "200":
+          description: Result for each log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditVerification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: mohar_portal
+      description: Set by `POST /portal/v1/session`. Never an API key.
+
+  parameters:
+    Origin:
+      name: Origin
+      in: header
+      required: true
+      description: Must be one of the portal's own origins (`PORTAL_ORIGINS`).
+      schema:
+        type: string
+        example: http://localhost:3002
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Cursor:
+      name: cursor
+      in: query
+      description: The `nextCursor` of the previous page.
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "./openapi.yaml#/components/schemas/Error"
+    Unauthorized:
+      description: Not signed in, the session has ended, or the sign-in details are wrong
+      content:
+        application/json:
+          schema:
+            $ref: "./openapi.yaml#/components/schemas/Error"
+    Forbidden:
+      description: |
+        Signed in, but this role may not do this, the account is disabled, or the `Origin`
+        header is missing or not the portal's. Code `forbidden`.
+      content:
+        application/json:
+          schema:
+            $ref: "./openapi.yaml#/components/schemas/Error"
+    NotFound:
+      description: Not found, or it belongs to another partner
+      content:
+        application/json:
+          schema:
+            $ref: "./openapi.yaml#/components/schemas/Error"
+    TooManyRequests:
+      description: Too many attempts. Wait for `Retry-After` seconds.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "./openapi.yaml#/components/schemas/Error"
+
+  schemas:
+    Role:
+      type: string
+      enum: [viewer, developer, compliance, operator]
+
+    KycLevel:
+      type: string
+      enum: [asaan, standard, enhanced]
+
+    SignInRequest:
+      type: object
+      required: [email, password, code]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 1
+          maxLength: 256
+        code:
+          type: string
+          pattern: "^[0-9]{6}$"
+
+    Me:
+      type: object
+      required: [user, sessionExpiresAt, idleTimeoutSeconds]
+      properties:
+        user:
+          $ref: "#/components/schemas/PortalUser"
+        sessionExpiresAt:
+          description: The absolute end of the session (8 hours after sign-in).
+          type: string
+          format: date-time
+        idleTimeoutSeconds:
+          type: integer
+          example: 900
+
+    PortalUser:
+      type: object
+      required: [id, email, role]
+      properties:
+        id:
+          type: string
+          pattern: "^usr_[A-Za-z0-9]+$"
+        email:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        partner:
+          description: The partner's slug. Absent for operators.
+          type: string
+
+    Overview:
+      type: object
+      required:
+        [
+          partner,
+          customers,
+          goldHeldGrams,
+          goldHeldPkr,
+          volume30DaysPkr,
+          failedLast7Days,
+          latestTransactions,
+        ]
+      properties:
+        partner:
+          type: string
+        customers:
+          type: integer
+        goldHeldGrams:
+          $ref: "./openapi.yaml#/components/schemas/Grams"
+        goldHeldPkr:
+          $ref: "./openapi.yaml#/components/schemas/Pkr"
+        volume30DaysPkr:
+          description: Confirmed mints and burns in the last 30 days, at the price they traded.
+          $ref: "./openapi.yaml#/components/schemas/Pkr"
+        failedLast7Days:
+          type: integer
+        reserve:
+          description: The latest proof of reserve. Absent until one is published.
+          type: object
+          required: [fullyBacked, asOf]
+          properties:
+            fullyBacked:
+              type: boolean
+            asOf:
+              type: string
+              format: date-time
+        latestTransactions:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "./openapi.yaml#/components/schemas/Transaction"
+
+    PortalWallet:
+      type: object
+      required: [id, externalCustomerId, address, kycLevel, createdAt]
+      properties:
+        id:
+          type: string
+        externalCustomerId:
+          type: string
+        address:
+          $ref: "./openapi.yaml#/components/schemas/Address"
+        kycLevel:
+          $ref: "#/components/schemas/KycLevel"
+        createdAt:
+          type: string
+          format: date-time
+
+    PortalWalletList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalWallet"
+        nextCursor:
+          type: string
+
+    LimitUse:
+      type: object
+      required: [limitPkr, usedPkr]
+      properties:
+        limitPkr:
+          $ref: "./openapi.yaml#/components/schemas/Pkr"
+        usedPkr:
+          $ref: "./openapi.yaml#/components/schemas/Pkr"
+
+    PortalWalletDetail:
+      allOf:
+        - $ref: "#/components/schemas/PortalWallet"
+        - type: object
+          required: [status, balanceGrams, valuePkr, limits]
+          properties:
+            status:
+              type: string
+              enum: [active, frozen]
+            balanceGrams:
+              $ref: "./openapi.yaml#/components/schemas/Grams"
+            valuePkr:
+              $ref: "./openapi.yaml#/components/schemas/Pkr"
+            explorerUrl:
+              type: string
+              format: uri
+            limits:
+              type: object
+              required: [perTradePkr, last24Hours, last30Days, holding]
+              properties:
+                perTradePkr:
+                  $ref: "./openapi.yaml#/components/schemas/Pkr"
+                last24Hours:
+                  $ref: "#/components/schemas/LimitUse"
+                last30Days:
+                  $ref: "#/components/schemas/LimitUse"
+                holding:
+                  $ref: "#/components/schemas/LimitUse"
+
+    PortalTransactionDetail:
+      type: object
+      required: [transaction]
+      properties:
+        transaction:
+          $ref: "./openapi.yaml#/components/schemas/Transaction"
+        quote:
+          description: The quote a mint or burn executed. Absent for transfers.
+          $ref: "./openapi.yaml#/components/schemas/Quote"
+        failureMessage:
+          type: string
+
+    Limits:
+      type: object
+      required: [levels]
+      properties:
+        levels:
+          type: array
+          items:
+            type: object
+            required: [level, perTradePkr, per24HoursPkr, per30DaysPkr, maxHoldingPkr, customers]
+            properties:
+              level:
+                $ref: "#/components/schemas/KycLevel"
+              perTradePkr:
+                $ref: "./openapi.yaml#/components/schemas/Pkr"
+              per24HoursPkr:
+                $ref: "./openapi.yaml#/components/schemas/Pkr"
+              per30DaysPkr:
+                $ref: "./openapi.yaml#/components/schemas/Pkr"
+              maxHoldingPkr:
+                $ref: "./openapi.yaml#/components/schemas/Pkr"
+              customers:
+                type: integer
+
+    AuditEntry:
+      type: object
+      required: [seq, at, action, result, hash, prevHash]
+      properties:
+        seq:
+          type: integer
+        at:
+          type: string
+          format: date-time
+        userId:
+          type: string
+        email:
+          type: string
+        partner:
+          type: string
+        action:
+          type: string
+          example: session.created
+        target:
+          type: string
+        result:
+          type: string
+          enum: [ok, refused, failed]
+        detail:
+          type: object
+          additionalProperties: true
+        ip:
+          type: string
+        hash:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        prevHash:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+
+    AuditList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEntry"
+        nextCursor:
+          type: string
+
+    AuditVerification:
+      type: object
+      required: [audit, security]
+      properties:
+        audit:
+          $ref: "#/components/schemas/ChainCheck"
+        security:
+          $ref: "#/components/schemas/ChainCheck"
+
+    ChainCheck:
+      type: object
+      required: [intact, entries]
+      properties:
+        intact:
+          type: boolean
+        entries:
+          type: integer
+        firstBrokenSeq:
+          type: integer
