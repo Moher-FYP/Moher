@@ -5,12 +5,14 @@
 *                     @goesbyabdulwasay
 
 # Smart contracts, API and SDK — technical lead
-# /contracts/         @ALI_GITHUB_USERNAME
-# /api/               @ALI_GITHUB_USERNAME
-# /sdk/               @ALI_GITHUB_USERNAME
+/contracts/           @alyriaz
+/api/                 @alyriaz
+/sdk/                 @alyriaz
+/portal/              @alyriaz
 
 # Demo bank UI — UI/UX lead (Ali reviews the SDK integration too)
-# /demo-bank/         @AROOB_GITHUB_USERNAME @ALI_GITHUB_USERNAME
+/demo-bank/           @alyriaz
+# /demo-bank/         @AROOB_GITHUB_USERNAME @alyriaz   (swap in once Aroob's username is known)
 
 # Specs and thesis material — project manager
 /docs/                @goesbyabdulwasay
