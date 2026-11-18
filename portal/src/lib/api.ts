@@ -236,3 +236,12 @@ export interface IssuedSecrets {
   setupKey: string;
   otpauthUri: string;
 }
+
+export interface AnchorCheck {
+  anchors: number;
+  intact: boolean;
+  lastAnchoredAt?: string;
+  lastTxHash?: string;
+  lastExplorerUrl?: string;
+  problem?: string;
+}

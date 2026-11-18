@@ -47,10 +47,34 @@ export default function OperatorPage() {
     }
   }
 
+  const [anchored, setAnchored] = useState<string>();
+  async function anchorNow() {
+    setError(undefined);
+    try {
+      const { anchor } = await api<{ anchor: { txHash: string } | null }>("/admin/audit/anchor", {
+        method: "POST",
+      });
+      setAnchored(anchor ? `Anchored in ${anchor.txHash.slice(0, 10)}…` : "Nothing new to anchor");
+    } catch (e) {
+      setError(e);
+    }
+  }
+
   const key = partners.data?.complianceKey;
   return (
     <>
-      <PageHeader title="Partners, people and freezes" subtitle="MOHAR operators only." />
+      <PageHeader
+        title="Partners, people and freezes"
+        subtitle="MOHAR operators only."
+        actions={
+          <div className="flex items-center gap-3">
+            {anchored ? <span className="text-xs text-ink-soft">{anchored}</span> : null}
+            <Button variant="secondary" onClick={() => void anchorNow()}>
+              Anchor audit log on-chain
+            </Button>
+          </div>
+        }
+      />
       <div className="space-y-6">
         <Card
           title="Freeze requests"

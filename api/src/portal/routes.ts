@@ -360,8 +360,20 @@ export function portalRoutes(ctx: AppContext, portal: PortalContext): Router {
     });
   });
 
-  router.get("/portal/v1/audit/verify", ...compliance, (_req, res) => {
-    res.json({ audit: store.verifyLog("audit"), security: store.verifyLog("security") });
+  const withExplorer = async <T extends { lastTxHash?: string }>(check: T) => {
+    const url = check.lastTxHash
+      ? ctx.chain.explorerTxUrl(check.lastTxHash as `0x${string}`)
+      : undefined;
+    return { ...check, ...(url ? { lastExplorerUrl: url } : {}) };
+  };
+
+  router.get("/portal/v1/audit/verify", ...compliance, async (_req, res) => {
+    const anchor = portal.manage?.anchor;
+    res.json({
+      audit: store.verifyLog("audit"),
+      security: store.verifyLog("security"),
+      anchors: anchor ? await withExplorer(await anchor.verify()) : null,
+    });
   });
 
   return router;

@@ -207,6 +207,18 @@ describe.skipIf(!hasFoundry || !portalBuilt || !hasChromium)("partner portal in 
     await context.close();
   });
 
+  it("anchors the audit log on-chain, and compliance sees it match", async () => {
+    const ops = await signIn("ops@mohar.test");
+    await ops.page.click("button:has-text('Anchor audit log on-chain')");
+    await ops.page.getByText(/Anchored in 0x/).waitFor();
+    await ops.context.close();
+
+    const comp = await signIn("comp@demo-bank.test");
+    await comp.page.click("text=Compliance");
+    await comp.page.getByText(/Matches 1 on-chain anchor/).waitFor();
+    await comp.context.close();
+  });
+
   it("lets an operator add a person and shows the QR code once", async () => {
     const { context, page } = await signIn("ops@mohar.test");
     await page.getByText("People").first().waitFor();

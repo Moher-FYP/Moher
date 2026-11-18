@@ -127,6 +127,11 @@ const ConfigSchema = z.object({
    * Use "false" if the API is ever exposed directly.
    */
   TRUST_PROXY: z.string().default("loopback"),
+  /**
+   * Hours between on-chain anchors of the portal's audit and security logs (portal/anchor.ts),
+   * sent from the compliance key. 0 turns anchoring off. About 0.0007 POL each on Amoy.
+   */
+  AUDIT_ANCHOR_HOURS: z.coerce.number().min(0).max(168).default(24),
   /** Where the JSON store lives. ":memory:" keeps everything in memory (tests). */
   DATA_DIR: z.string().default(".data"),
   /** Enables /dev routes (move the mock gold price). Defaults to on for local chains. */

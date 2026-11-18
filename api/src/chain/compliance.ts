@@ -67,6 +67,39 @@ export class ComplianceSigner {
     return this.write("unfreezeWallet", [wallet]);
   }
 
+  /**
+   * Writes data on-chain in a transaction to its own address (no contract, no value): the
+   * audit-log anchor (portal/anchor.ts). Any account can do this; it needs no role.
+   */
+  anchor(data: Hex): Promise<Hex> {
+    const run = async () => {
+      const hash = await this.walletClient.sendTransaction({
+        account: this.account,
+        to: this.account.address,
+        value: 0n,
+        data,
+      });
+      const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error(`Transaction ${hash} reverted on-chain`);
+      return hash;
+    };
+    const next = this.tail.then(run, run);
+    this.tail = next.catch(() => undefined);
+    return next;
+  }
+
+  /** The data a transaction carried, as the chain has it; undefined if it is not found. */
+  async transactionData(
+    hash: Hex,
+  ): Promise<{ from: Address; to: Address | null; input: Hex } | undefined> {
+    try {
+      const tx = await this.publicClient.getTransaction({ hash });
+      return { from: tx.from, to: tx.to, input: tx.input };
+    } catch {
+      return undefined;
+    }
+  }
+
   private write(
     functionName: "freezeWallet" | "unfreezeWallet",
     args: readonly [Address, Hex] | readonly [Address],

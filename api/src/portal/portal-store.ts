@@ -103,6 +103,14 @@ export interface FreezeRequest {
   failure?: string;
 }
 
+/** The latest entry of each log, written on-chain in one transaction (portal/anchor.ts). */
+export interface AnchorRecord {
+  at: string;
+  audit: { seq: number; hash: string };
+  security: { seq: number; hash: string };
+  txHash: string;
+}
+
 export type LogName = "audit" | "security";
 
 export interface LogInput {
@@ -132,6 +140,7 @@ interface State {
   partnerSettings: Record<string, PartnerSettings>;
   deliveries: WebhookDelivery[];
   freezeRequests: Record<string, FreezeRequest>;
+  anchors: AnchorRecord[];
 }
 
 /** Each log keeps its newest entries; a real deployment ships them to separate storage. */
@@ -147,6 +156,7 @@ const emptyState = (): State => ({
   partnerSettings: {},
   deliveries: [],
   freezeRequests: {},
+  anchors: [],
 });
 
 export class PortalStore {
@@ -334,6 +344,28 @@ export class PortalStore {
     return Object.values(this.state.freezeRequests)
       .filter((r) => !partnerSlug || r.partnerSlug === partnerSlug)
       .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+  }
+
+  // ---------------------------------------------------------------- anchors
+
+  saveAnchor(anchor: AnchorRecord): void {
+    this.state.anchors.push(anchor);
+    this.persist();
+  }
+
+  anchors(): AnchorRecord[] {
+    return this.state.anchors;
+  }
+
+  /** The newest entry's seq and hash (seq 0 and the zero hash for an empty log). */
+  head(name: LogName): { seq: number; hash: string } {
+    const last = this.state.logs[name].at(-1);
+    return last ? { seq: last.seq, hash: last.hash } : { seq: 0, hash: GENESIS };
+  }
+
+  /** The entry with this seq, if the log still holds it (old entries are capped away). */
+  entry(name: LogName, seq: number): LogEntry | undefined {
+    return this.state.logs[name].find((e) => e.seq === seq);
   }
 
   // ---------------------------------------------------------------- logs

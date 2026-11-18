@@ -14,7 +14,13 @@ import {
   Td,
   useLoad,
 } from "@/components/ui";
-import { api, type AuditEntry, type ChainCheck, type FreezeRequest } from "@/lib/api";
+import {
+  api,
+  type AnchorCheck,
+  type AuditEntry,
+  type ChainCheck,
+  type FreezeRequest,
+} from "@/lib/api";
 import { short, when } from "@/lib/format";
 
 function ChainBadge({ name, check }: { name: string; check: ChainCheck }) {
@@ -25,6 +31,20 @@ function ChainBadge({ name, check }: { name: string; check: ChainCheck }) {
         ? `intact, ${check.entries} ${check.entries === 1 ? "entry" : "entries"}`
         : `broken at entry ${check.firstBrokenSeq}`}
     </Badge>
+  );
+}
+
+function AnchorBadge({ check }: { check: AnchorCheck | null }) {
+  if (!check) return <Badge>Not anchored on-chain</Badge>;
+  if (!check.intact) return <Badge tone="bad">On-chain check failed: {check.problem}</Badge>;
+  if (!check.anchors) return <Badge tone="warn">Not anchored yet</Badge>;
+  const label = `Matches ${check.anchors} on-chain ${check.anchors === 1 ? "anchor" : "anchors"} · last ${when(check.lastAnchoredAt)}`;
+  return check.lastExplorerUrl ? (
+    <a href={check.lastExplorerUrl} target="_blank" rel="noreferrer">
+      <Badge tone="ok">{label}</Badge>
+    </a>
+  ) : (
+    <Badge tone="ok">{label}</Badge>
   );
 }
 
@@ -102,7 +122,9 @@ function Log() {
 
 export default function CompliancePage() {
   const me = useMe();
-  const verify = useLoad(() => api<{ audit: ChainCheck; security: ChainCheck }>("/audit/verify"));
+  const verify = useLoad(() =>
+    api<{ audit: ChainCheck; security: ChainCheck; anchors: AnchorCheck | null }>("/audit/verify"),
+  );
   const freezes = useLoad(() => api<{ data: FreezeRequest[] }>("/freeze-requests"));
   const operator = me.user.role === "operator";
 
@@ -116,6 +138,7 @@ export default function CompliancePage() {
             <>
               <ChainBadge name="Changes" check={verify.data.audit} />
               <ChainBadge name="Sign-ins" check={verify.data.security} />
+              <AnchorBadge check={verify.data.anchors} />
             </>
           ) : null
         }

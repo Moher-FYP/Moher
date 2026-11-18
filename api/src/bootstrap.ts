@@ -13,6 +13,7 @@ import { PartnerDirectory } from "./http/auth.js";
 import { toApiTransaction } from "./http/presenters.js";
 import { ComplianceSigner } from "./chain/compliance.js";
 import { PortalAuth } from "./portal/auth.js";
+import { AuditAnchor } from "./portal/anchor.js";
 import { applyPortalSettings } from "./portal/keys.js";
 import { PortalStore } from "./portal/portal-store.js";
 import { Sealer } from "./portal/sealed.js";
@@ -186,13 +187,16 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   price.startKeeper();
 
   const compliance = await complianceSigner(config, deployment, local);
+  // The logs' latest hashes, written on-chain once a day from the compliance key.
+  const anchor = compliance ? new AuditAnchor(portalStore, compliance) : undefined;
+  anchor?.start(config.AUDIT_ANCHOR_HOURS);
   const portal = {
     store: portalStore,
     auth: new PortalAuth(portalStore, sealer, {
       origins: portalOrigins,
       secureCookies: !portalOrigins.every((o) => o.startsWith("http://localhost")),
     }),
-    manage: { sealer, webhooks, compliance, allowLoopbackWebhooks },
+    manage: { sealer, webhooks, compliance, anchor, allowLoopbackWebhooks },
   };
 
   return {

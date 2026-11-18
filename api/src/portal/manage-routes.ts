@@ -18,6 +18,7 @@ import type {
   PortalUserRecord,
   WebhookDelivery,
 } from "./portal-store.js";
+import type { AuditAnchor } from "./anchor.js";
 import type { Sealer } from "./sealed.js";
 
 /** What the portal's managing routes need beyond the read routes. */
@@ -28,6 +29,8 @@ export interface PortalManageContext {
   webhooks: WebhookSender;
   /** Absent when no compliance key is configured: freezes can be requested, not carried out. */
   compliance?: ComplianceSigner | undefined;
+  /** Writes the logs' heads on-chain (needs the compliance key). */
+  anchor?: AuditAnchor | undefined;
   allowLoopbackWebhooks: boolean;
 }
 
@@ -424,6 +427,19 @@ export function portalManageRoutes(ctx: AppContext, portal: PortalManageContext)
       detail: { requestId: request.id },
     });
     res.json(rejected);
+  });
+
+  router.post("/portal/v1/admin/audit/anchor", ...operator, async (req, res) => {
+    if (!portal.anchor) {
+      throw new ApiError(
+        501,
+        "not_implemented",
+        "Anchoring needs the compliance key (COMPLIANCE_PRIVATE_KEY)",
+      );
+    }
+    const anchor = await portal.anchor.anchorNow();
+    if (anchor) audit(req, res, { action: "audit.anchor", detail: { txHash: anchor.txHash } });
+    res.json({ anchor: anchor ?? null });
   });
 
   // ---------------------------------------------------------------- operator: people

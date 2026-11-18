@@ -945,6 +945,53 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /portal/v1/admin/audit/anchor:
+    post:
+      tags: [Operators]
+      operationId: anchorAudit
+      summary: Write the logs' latest hashes on-chain now
+      description: |
+        Role `operator`. Also happens every `AUDIT_ANCHOR_HOURS` (default 24). A self-transaction
+        from the compliance key whose data is
+        `MOHAR audit v1|audit:<seq>:<hash>|security:<seq>:<hash>`. Returns `anchor: null` when
+        nothing was logged since the last anchor.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+      responses:
+        "200":
+          description: The anchor written, or null
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [anchor]
+                properties:
+                  anchor:
+                    oneOf:
+                      - type: object
+                        required: [at, audit, security, txHash]
+                        properties:
+                          at:
+                            type: string
+                            format: date-time
+                          audit:
+                            type: object
+                          security:
+                            type: object
+                          txHash:
+                            type: string
+                      - type: "null"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "501":
+          description: No compliance key is configured. Code `not_implemented`.
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi.yaml#/components/schemas/Error"
+
 components:
   securitySchemes:
     session:
@@ -1279,12 +1326,38 @@ components:
 
     AuditVerification:
       type: object
-      required: [audit, security]
+      required: [audit, security, anchors]
       properties:
         audit:
           $ref: "#/components/schemas/ChainCheck"
         security:
           $ref: "#/components/schemas/ChainCheck"
+        anchors:
+          description: |
+            The logs checked against their on-chain anchors. Null when anchoring is off (no
+            compliance key). Catches a log rewritten in full, which the hash chain alone cannot.
+          oneOf:
+            - $ref: "#/components/schemas/AnchorCheck"
+            - type: "null"
+
+    AnchorCheck:
+      type: object
+      required: [anchors, intact]
+      properties:
+        anchors:
+          type: integer
+        intact:
+          type: boolean
+        lastAnchoredAt:
+          type: string
+          format: date-time
+        lastTxHash:
+          type: string
+        lastExplorerUrl:
+          type: string
+          format: uri
+        problem:
+          type: string
 
     ChainCheck:
       type: object
