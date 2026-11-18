@@ -127,8 +127,14 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   const queue = new SerialQueue();
   const webhooks = new WebhookSender(
     (txn) => toApiTransaction(txn, (h) => chain.explorerTxUrl(h)),
-    { allowLoopback: allowLoopbackWebhooks, recorder: portalStore },
+    {
+      allowLoopback: allowLoopbackWebhooks,
+      store: portalStore,
+      partner: (slug) => partners.get(slug),
+    },
   );
+  // Retries saved before a restart carry on from here.
+  webhooks.start();
   const settlement = new SettlementService(chain, vault, store, queue, webhooks);
 
   // Finish what the previous run left unfinished, before the vault book is read and before

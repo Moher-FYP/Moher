@@ -101,8 +101,8 @@ export async function setup(
   applyPortalSettings(partners, portalStore, sealer);
   const sent: Sent[] = [];
   const webhooks = new WebhookSender((t) => ({ id: t.id, status: t.status }), {
-    recorder: portalStore,
-    retryDelaysMs: [0],
+    store: portalStore,
+    retryScheduleMs: [],
     post: async (url, headers, body) => {
       sent.push({ url, headers, body });
       return { status: options.webhookStatus ?? 200 };

@@ -82,6 +82,8 @@ export interface WebhookDelivery {
   status: "pending" | "delivered" | "failed";
   attempts: DeliveryAttempt[];
   createdAt: string;
+  /** While pending after a failed attempt: when the next one is due. */
+  nextAttemptAt?: string | undefined;
   /** Set when this delivery is a resend of another. */
   resendOf?: string;
 }
@@ -286,9 +288,20 @@ export class PortalStore {
     if (at >= 0) this.state.deliveries[at] = delivery;
     else this.state.deliveries.push(delivery);
     if (this.state.deliveries.length > LOG_CAP) {
-      this.state.deliveries.splice(0, this.state.deliveries.length - LOG_CAP);
+      // Drop the oldest finished ones; a delivery still waiting to retry is kept.
+      let excess = this.state.deliveries.length - LOG_CAP;
+      this.state.deliveries = this.state.deliveries.filter(
+        (d) => d.status === "pending" || excess-- <= 0,
+      );
     }
     this.persist();
+  }
+
+  /** Pending deliveries whose next attempt is due (webhooks.ts sends them). */
+  dueDeliveries(nowIso: string): WebhookDelivery[] {
+    return this.state.deliveries.filter(
+      (d) => d.status === "pending" && d.nextAttemptAt !== undefined && d.nextAttemptAt <= nowIso,
+    );
   }
 
   getDelivery(id: string): WebhookDelivery | undefined {

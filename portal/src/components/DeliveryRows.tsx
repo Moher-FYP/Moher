@@ -52,6 +52,9 @@ export function DeliveryRows({ rows, onResent }: { rows: Delivery[]; onResent: (
               </Td>
               <Td>
                 <StatusBadge status={d.status} />
+                {d.nextAttemptAt ? (
+                  <p className="mt-1 text-xs text-ink-faint">next try {when(d.nextAttemptAt)}</p>
+                ) : null}
               </Td>
               <Td>
                 <button

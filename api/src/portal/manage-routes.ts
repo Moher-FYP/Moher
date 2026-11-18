@@ -76,6 +76,7 @@ const presentDelivery = (d: WebhookDelivery) => ({
   status: d.status,
   attempts: d.attempts,
   createdAt: d.createdAt,
+  ...(d.nextAttemptAt ? { nextAttemptAt: d.nextAttemptAt } : {}),
   ...(d.resendOf ? { resendOf: d.resendOf } : {}),
 });
 

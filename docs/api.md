@@ -95,7 +95,7 @@ POST /v1/mints ─▶ checks (quote valid, wallet active, minting not paused) �
 | Limits          | `src/http/rate-limit.ts`     | Per partner: requests per minute, and a smaller allowance of new wallets per hour (each costs gas). Over the limit is a 429 with `Retry-After`.                                                                                         |
 | Recovery        | `src/services/settlement.ts` | On start, `recover()` settles trades the last run left unfinished: never sent → failed; sent → as the chain says; no receipt yet → left for the next start.                                                                             |
 | Store           | `src/store/store.ts`         | JSON file in `api/.data/`, reset automatically when the local chain restarts. Swap for Postgres before a real deployment.                                                                                                               |
-| Webhooks        | `src/services/webhooks.ts`   | Signed with the SDK's own helper; 3 attempts; recorded for the portal's delivery log.                                                                                                                                                   |
+| Webhooks        | `src/services/webhooks.ts`   | Signed with the SDK's own helper. Failed deliveries are saved and retried for 3 days (1 min, 5 min, 30 min, 2 h, 6 h, 12 h, then daily, with jitter), also after a restart; recorded for the portal's delivery log.                     |
 
 Custodial wallets are derived from `WALLET_MNEMONIC` (`m/44'/60'/1'/0/i`); customers never hold
 keys or gas.

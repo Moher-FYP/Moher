@@ -1393,6 +1393,13 @@ components:
         createdAt:
           type: string
           format: date-time
+        nextAttemptAt:
+          description: |
+            While pending after a failed attempt, when MOHAR tries again. Retries follow a
+            schedule from the first attempt (1 min, 5 min, 30 min, 2 h, 6 h, 12 h, 1, 2 and 3
+            days, each up to 20% early or late), survive a restart, and stop at 3 days.
+          type: string
+          format: date-time
         resendOf:
           type: string
 

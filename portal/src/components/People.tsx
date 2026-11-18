@@ -228,7 +228,10 @@ export function People() {
             </select>
           </Field>
         )}
-        <Button type="submit">Add person</Button>
+        {/* Partner users need the partner list loaded first, or the form has nothing to pick. */}
+        <Button type="submit" disabled={role !== "operator" && !partners.data?.data.length}>
+          Add person
+        </Button>
       </form>
     </Card>
   );

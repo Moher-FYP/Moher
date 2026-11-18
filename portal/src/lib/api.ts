@@ -192,6 +192,7 @@ export interface Delivery {
   status: "pending" | "delivered" | "failed";
   attempts: { at: string; statusCode?: number; error?: string; ms: number }[];
   createdAt: string;
+  nextAttemptAt?: string;
   resendOf?: string;
 }
 

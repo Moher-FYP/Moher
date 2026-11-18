@@ -210,6 +210,7 @@ describe.skipIf(!hasFoundry || !portalBuilt || !hasChromium)("partner portal in 
   it("lets an operator add a person and shows the QR code once", async () => {
     const { context, page } = await signIn("ops@mohar.test");
     await page.getByText("People").first().waitFor();
+    await page.locator("select[name=partner] option").first().waitFor({ state: "attached" });
     await page.fill("form input[name=email]", "analyst@demo-bank.test");
     await page.click("button:has-text('Add person')");
     await page.getByText("Sign-in details for analyst@demo-bank.test").waitFor();
