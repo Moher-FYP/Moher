@@ -83,6 +83,8 @@ pnpm --filter @mohar/sdk generate   # regenerate SDK types after editing the spe
 
 ## How we work
 
+- Reviewing the project? Start with [`REVIEW.md`](REVIEW.md): scope, architecture, how to run
+  every check, the security controls and the known gaps.
 - `main` is protected and always demo-able. Work on a branch (`feat/mint-flow`,
   `fix/quote-expiry`, `docs/ss57-matrix`) and open a pull request. CI must pass.
 - One issue per task; milestones: **25 Oct** mint and burn end to end · **15 Nov** feature
