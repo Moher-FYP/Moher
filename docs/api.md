@@ -125,7 +125,7 @@ pnpm --filter @mohar/api portal:user add --email dev@demo-bank.test --role devel
 pnpm --filter @mohar/api portal:user list
 ```
 
-The new user's password and authenticator key are printed once, to that terminal only. On
+The new user's password, a QR code for the authenticator app and the setup key are printed once, to that terminal only. On
 Amoy, prefix the command with `DOTENV_CONFIG_PATH=.env.amoy`, as for the API.
 
 ## Tests

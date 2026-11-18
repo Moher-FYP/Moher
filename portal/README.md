@@ -14,9 +14,12 @@ pnpm --filter @mohar/api dev
 pnpm --filter @mohar/portal dev     # http://localhost:3002
 ```
 
-`portal:user` prints each new user's password and authenticator setup key once. Add the key to
-an authenticator app (Google or Microsoft Authenticator: "enter a setup key", time-based), then
-sign in with the email, the password and the app's 6-digit code. Run `portal:user` with the API
+`portal:user` prints each new user's password, a QR code and the setup key, once. Scan the QR
+code with an authenticator app (Microsoft Authenticator: + → Other account; Google
+Authenticator or Bitwarden Authenticator: + → Scan a QR code), save the password in the password
+manager, then sign in with the email, the password and the app's 6-digit code. If scanning
+fails, enter the setup key by hand instead. Never paste the key, the QR code or the password
+into chat or a document; if one leaks, `portal:user reset` replaces both. Run `portal:user` with the API
 stopped. Against Amoy, prefix both API commands with `DOTENV_CONFIG_PATH=.env.amoy`.
 
 `MOHAR_API_URL` (default `http://127.0.0.1:4000`) says where the API is; `.env.example` has it.

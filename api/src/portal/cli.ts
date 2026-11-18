@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { createConnection } from "node:net";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import QRCode from "qrcode";
 import { loadConfig } from "../config.js";
 import { PartnerDirectory } from "../http/auth.js";
 import { newId } from "../lib/ids.js";
@@ -108,7 +109,7 @@ async function main(): Promise<void> {
       createdAt: new Date().toISOString(),
     });
     audit("user.create", email, partner);
-    showOnce(email, password, totpSecret);
+    await showOnce(email, password, totpSecret);
     return;
   }
 
@@ -136,7 +137,7 @@ async function main(): Promise<void> {
     });
     store.deleteSessionsOf(user.id);
     audit("user.reset", email, user.partnerSlug);
-    showOnce(email, password, totpSecret);
+    await showOnce(email, password, totpSecret);
   }
 }
 
@@ -148,17 +149,30 @@ function newPassword(email: string): string {
   }
 }
 
-function showOnce(email: string, password: string, totpSecret: string): void {
+async function showOnce(email: string, password: string, totpSecret: string): Promise<void> {
+  // The QR code is what authenticator apps scan: nothing to copy or type, so no key can be
+  // mistyped or pasted into the wrong place. It holds the same secret as the setup key.
+  const qr = await QRCode.toString(otpauthUri(totpSecret, email), {
+    type: "terminal",
+    small: true,
+    errorCorrectionLevel: "M",
+  });
   console.log(`
-Shown once. Save both in the password manager now, then clear this terminal.
+Shown once. Do these now, then clear this terminal (Ctrl+L) and close it.
 
-  Email:     ${email}
-  Password:  ${password}
+  1. Authenticator app: tap +, choose "Other account" (Microsoft) or "Scan a QR code", and
+     scan this. If scanning fails, choose "Enter code manually" and paste the setup key.
 
-  Authenticator app: add an account with the setup key below (time-based, 6 digits),
-  or open this link on the phone:
-  Setup key: ${totpSecret}
-  Link:      ${otpauthUri(totpSecret, email)}
+${qr}
+     Setup key: ${totpSecret}
+
+  2. Password manager: save the email and password below (and the setup key, if you want a
+     way to set the app up again).
+
+     Email:     ${email}
+     Password:  ${password}
+
+  Never paste the setup key, the QR code or the password into chat, email or a document.
 `);
 }
 
