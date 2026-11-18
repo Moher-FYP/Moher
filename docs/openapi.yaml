@@ -835,6 +835,7 @@ components:
               enum:
                 - invalid_request
                 - unauthorized
+                - forbidden
                 - not_found
                 - quote_expired
                 - price_moved

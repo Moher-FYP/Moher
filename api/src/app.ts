@@ -4,6 +4,7 @@ import { MoneyFormatError } from "./domain/money.js";
 import { QuoteTooSmallError } from "./domain/pricing.js";
 import { ApiError, sendError } from "./errors.js";
 import { partnerRoutes } from "./http/routes.js";
+import { portalRoutes } from "./portal/routes.js";
 
 /** Largest request body the API reads. Real requests are a few hundred bytes. */
 const BODY_LIMIT = "100kb";
@@ -19,6 +20,7 @@ export function createApp(ctx: AppContext): Express {
   app.use(express.json({ limit: BODY_LIMIT }));
 
   app.use(partnerRoutes(ctx));
+  if (ctx.portal) app.use(portalRoutes(ctx, ctx.portal));
 
   app.use((req, res) => {
     sendError(res, 404, "not_found", `No route for ${req.method} ${req.originalUrl}`);

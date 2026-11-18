@@ -100,10 +100,35 @@ POST /v1/mints ─▶ checks (quote valid, wallet active, minting not paused) �
 Custodial wallets are derived from `WALLET_MNEMONIC` (`m/44'/60'/1'/0/i`); customers never hold
 keys or gas.
 
+## Partner portal routes
+
+`/portal/v1/*` serve the partner portal: a partner's own staff, signed in as people, not
+servers. They are described in `docs/portal-openapi.yaml` and live in `src/portal/`.
+
+| Part            | Where                        | What it does                                                                                                                                           |
+| --------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Passwords       | `src/portal/passwords.ts`    | Argon2id (19 MiB, 2 passes, 1 thread). At least 12 characters, no symbol rules, refused if on a list of 46,146 common passwords (`api/data/`).         |
+| One-time codes  | `src/portal/totp.ts`         | RFC 6238, 6 digits, 30 s, one step of drift. Each code works once. Secrets sealed with AES-256-GCM under `PORTAL_SECRET_KEY` (`sealed.ts`).            |
+| Sessions        | `src/portal/auth.ts`         | Random 256-bit token in an `HttpOnly`, `SameSite=Strict` cookie; only its SHA-256 is stored. Ends after 15 min idle, 8 h in all, or sign-out.          |
+| Wrong attempts  | `src/portal/auth.ts`         | From the 5th failure each try waits longer (1 s doubling, to 15 min, answered 429); the 20th disables the account. Also 30 attempts per IP per 15 min. |
+| Changes         | `src/portal/auth.ts`         | Every POST, PUT and DELETE needs an `Origin` in `PORTAL_ORIGINS`.                                                                                      |
+| Partner scoping | `src/portal/routes.ts`       | The partner comes from the session. Another partner's wallet or transaction is a 404, as if it did not exist.                                          |
+| Logs            | `src/portal/portal-store.ts` | An audit log (changes, exports) and a security log (sign-ins, refusals), each hash-chained; `GET /portal/v1/audit/verify` recomputes both.             |
+
+Portal users are added from the terminal, with the API stopped (it would overwrite the file):
+
+```bash
+pnpm --filter @mohar/api portal:user add --email dev@demo-bank.test --role developer --partner demo-bank
+pnpm --filter @mohar/api portal:user list
+```
+
+The new user's password and authenticator key are printed once, to that terminal only. On
+Amoy, prefix the command with `DOTENV_CONFIG_PATH=.env.amoy`, as for the API.
+
 ## Tests
 
 ```bash
-pnpm --filter @mohar/api test    # unit: pricing, HTTP, auth, idempotency
+pnpm --filter @mohar/api test    # unit: pricing, HTTP, auth, idempotency, portal
 pnpm test:e2e                    # full flow on a throwaway Anvil chain (needs Foundry)
 ```
 

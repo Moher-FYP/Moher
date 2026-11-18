@@ -11,6 +11,9 @@ import { kycFingerprint } from "./domain/kyc.js";
 import { parseKycLimits } from "./domain/kyc-limits.js";
 import { PartnerDirectory } from "./http/auth.js";
 import { toApiTransaction } from "./http/presenters.js";
+import { PortalAuth } from "./portal/auth.js";
+import { PortalStore } from "./portal/portal-store.js";
+import { Sealer } from "./portal/sealed.js";
 import { findWeakSecrets, LOCAL_ONLY } from "./secrets.js";
 import { SerialQueue } from "./lib/queue.js";
 import { PriceService, type MirrorOptions } from "./services/price.js";
@@ -52,6 +55,8 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   const devRoutes = config.ENABLE_DEV_ROUTES ? config.ENABLE_DEV_ROUTES === "true" : local;
   const devApiKey = config.DEV_API_KEY ?? (local ? LOCAL_ONLY.devApiKey : undefined);
   const kycHashSecret = config.KYC_HASH_SECRET ?? (local ? LOCAL_ONLY.kycHashSecret : undefined);
+  const portalSecretKey =
+    config.PORTAL_SECRET_KEY ?? (local ? LOCAL_ONLY.portalSecretKey : undefined);
   if (!local) {
     const problems = findWeakSecrets({
       apiKeys: partners.apiKeys(),
@@ -59,6 +64,7 @@ export async function bootstrap(config: Config): Promise<AppContext> {
       devApiKey,
       devRoutes,
       kycHashSecret,
+      portalSecretKey,
     });
     if (problems.length > 0) {
       throw new Error(
@@ -147,9 +153,24 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   if (mirror) await price.tick(); // start from the market price, not the deploy-time one
   price.startKeeper();
 
+  const portalOrigins = config.PORTAL_ORIGINS.split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+  const portalStore = new PortalStore(
+    config.DATA_DIR === ":memory:" ? null : join(config.DATA_DIR, "portal.json"),
+  );
+  const portal = {
+    store: portalStore,
+    auth: new PortalAuth(portalStore, new Sealer(portalSecretKey ?? LOCAL_ONLY.portalSecretKey), {
+      origins: portalOrigins,
+      secureCookies: !portalOrigins.every((o) => o.startsWith("http://localhost")),
+    }),
+  };
+
   return {
     chain,
     store,
+    portal,
     vault,
     price,
     settlement,

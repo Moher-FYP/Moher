@@ -14,10 +14,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "abi": "node scripts/extract-abis.mjs"
+    "abi": "node scripts/extract-abis.mjs",
+    "portal:user": "tsx src/portal/cli.ts"
   },
   "dependencies": {
     "@mohar/sdk": "workspace:*",
+    "@node-rs/argon2": "^2.2.2",
     "@openzeppelin/merkle-tree": "^1.0.8",
     "dotenv": "^18.0.5",
     "express": "^5.3.0",
