@@ -93,6 +93,12 @@ const ConfigSchema = z.object({
   /** Ignore a reference older than this. Four days covers a weekend plus a market holiday. */
   MIRROR_MAX_AGE_SECONDS: z.coerce.number().int().min(60).default(345_600),
 
+  /**
+   * Least seconds between two reserve proofs. 0 (default): one proof after each burst of
+   * trades, as soon as the relayer is free. 60 on a busy chain: at most one a minute, which
+   * roughly halves the gas of a trade; a wallet's proof then lags its trade by up to a minute.
+   */
+  RESERVE_PUBLISH_INTERVAL_SECONDS: z.coerce.number().int().min(0).max(3_600).default(0),
   /** Requests each partner may send per minute, across all routes. */
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(600),
   /** New customer wallets each partner may register per hour. Each one costs the relayer gas. */
@@ -114,6 +120,18 @@ const ConfigSchema = z.object({
    * Private, link-local and other internal addresses are refused either way.
    */
   WEBHOOK_ALLOW_LOCALHOST: z.enum(["true", "false"]).optional(),
+  /**
+   * Which proxies may tell the API the client's real address (X-Forwarded-For), in Express's
+   * "trust proxy" form. Default "loopback": the partner portal on this machine passes portal
+   * requests through, and the API listens on 127.0.0.1, so only local processes can set it.
+   * Use "false" if the API is ever exposed directly.
+   */
+  TRUST_PROXY: z.string().default("loopback"),
+  /**
+   * Hours between on-chain anchors of the portal's audit and security logs (portal/anchor.ts),
+   * sent from the compliance key. 0 turns anchoring off. About 0.0007 POL each on Amoy.
+   */
+  AUDIT_ANCHOR_HOURS: z.coerce.number().min(0).max(168).default(24),
   /** Where the JSON store lives. ":memory:" keeps everything in memory (tests). */
   DATA_DIR: z.string().default(".data"),
   /** Enables /dev routes (move the mock gold price). Defaults to on for local chains. */

@@ -809,6 +809,189 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /portal/v1/admin/users:
+    get:
+      tags: [Operators]
+      operationId: listUsers
+      summary: Every portal user, with locked accounts visible
+      description: Role `operator`. Never includes a password hash or authenticator secret.
+      responses:
+        "200":
+          description: The users
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ManagedUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Operators]
+      operationId: createUser
+      summary: Add a portal user
+      description: |
+        Role `operator`. Generates the password and the authenticator key; both are in this
+        response only. Operators have no partner; every other role needs one.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  $ref: "#/components/schemas/Role"
+                partner:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssuedSecrets"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /portal/v1/admin/users/{userId}/reset:
+    post:
+      tags: [Operators]
+      operationId: resetUser
+      summary: New password and authenticator key; ends the user's sessions
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The new secrets, once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssuedSecrets"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /portal/v1/admin/users/{userId}/enable:
+    post:
+      tags: [Operators]
+      operationId: enableUser
+      summary: Unlock an account and clear its failed attempts
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagedUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /portal/v1/admin/users/{userId}/disable:
+    post:
+      tags: [Operators]
+      operationId: disableUser
+      summary: Lock an account and end its sessions
+      description: An operator cannot disable their own account.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagedUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /portal/v1/admin/audit/anchor:
+    post:
+      tags: [Operators]
+      operationId: anchorAudit
+      summary: Write the logs' latest hashes on-chain now
+      description: |
+        Role `operator`. Also happens every `AUDIT_ANCHOR_HOURS` (default 24). A self-transaction
+        from the compliance key whose data is
+        `MOHAR audit v1|audit:<seq>:<hash>|security:<seq>:<hash>`. Returns `anchor: null` when
+        nothing was logged since the last anchor.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+      responses:
+        "200":
+          description: The anchor written, or null
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [anchor]
+                properties:
+                  anchor:
+                    oneOf:
+                      - type: object
+                        required: [at, audit, security, txHash]
+                        properties:
+                          at:
+                            type: string
+                            format: date-time
+                          audit:
+                            type: object
+                          security:
+                            type: object
+                          txHash:
+                            type: string
+                      - type: "null"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "501":
+          description: No compliance key is configured. Code `not_implemented`.
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi.yaml#/components/schemas/Error"
+
 components:
   securitySchemes:
     session:
@@ -826,6 +1009,13 @@ components:
       schema:
         type: string
         example: http://localhost:3002
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^usr_[A-Za-z0-9]+$"
     RequestId:
       name: requestId
       in: path
@@ -1136,12 +1326,38 @@ components:
 
     AuditVerification:
       type: object
-      required: [audit, security]
+      required: [audit, security, anchors]
       properties:
         audit:
           $ref: "#/components/schemas/ChainCheck"
         security:
           $ref: "#/components/schemas/ChainCheck"
+        anchors:
+          description: |
+            The logs checked against their on-chain anchors. Null when anchoring is off (no
+            compliance key). Catches a log rewritten in full, which the hash chain alone cannot.
+          oneOf:
+            - $ref: "#/components/schemas/AnchorCheck"
+            - type: "null"
+
+    AnchorCheck:
+      type: object
+      required: [anchors, intact]
+      properties:
+        anchors:
+          type: integer
+        intact:
+          type: boolean
+        lastAnchoredAt:
+          type: string
+          format: date-time
+        lastTxHash:
+          type: string
+        lastExplorerUrl:
+          type: string
+          format: uri
+        problem:
+          type: string
 
     ChainCheck:
       type: object
@@ -1250,6 +1466,13 @@ components:
         createdAt:
           type: string
           format: date-time
+        nextAttemptAt:
+          description: |
+            While pending after a failed attempt, when MOHAR tries again. Retries follow a
+            schedule from the first attempt (1 min, 5 min, 30 min, 2 h, 6 h, 12 h, 1, 2 and 3
+            days, each up to 20% early or late), survive a restart, and stop at 3 days.
+          type: string
+          format: date-time
         resendOf:
           type: string
 
@@ -1285,4 +1508,44 @@ components:
         txHash:
           type: string
         failure:
+          type: string
+
+    ManagedUser:
+      type: object
+      required: [id, email, role, status, failedAttempts, createdAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        partner:
+          type: string
+        status:
+          type: string
+          enum: [active, disabled]
+        failedAttempts:
+          description: Wrong sign-ins in a row. From 5 each try waits longer; at 20 the account is disabled.
+          type: integer
+        lastFailedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    IssuedSecrets:
+      type: object
+      required: [user, password, setupKey, otpauthUri]
+      properties:
+        user:
+          $ref: "#/components/schemas/ManagedUser"
+        password:
+          type: string
+        setupKey:
+          description: The authenticator secret in base32, for apps that cannot scan.
+          type: string
+        otpauthUri:
+          description: The same secret as an otpauth:// link, which the portal shows as a QR code.
           type: string

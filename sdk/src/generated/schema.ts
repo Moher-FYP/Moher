@@ -936,7 +936,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Acknowledge. Non-2xx responses are retried with backoff. */
+      /** @description Acknowledge. Non-2xx responses and timeouts (15 s) are retried for up to 3 days, then the event is marked failed; resend it from the portal. */
       200: {
         headers: {
           [name: string]: unknown;

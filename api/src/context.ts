@@ -40,5 +40,7 @@ export interface AppContext {
     devApiKey?: string | undefined;
     /** How far a manual price may sit from the reference price (500 = 5%). */
     devPriceBandBps: bigint;
+    /** Express "trust proxy": who may report the client's address (config.ts TRUST_PROXY). */
+    trustProxy?: string;
   };
 }

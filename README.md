@@ -26,6 +26,7 @@ Demo bank web app (Next.js)          ← stands in for a partner bank
 | `api/`       | Partner API, mock vault, relayer                  | `docs/api.md`         |
 | `sdk/`       | `@mohar/sdk`, typed from the OpenAPI spec         | `sdk/src/client.ts`   |
 | `demo-bank/` | Mock partner bank; the customer-facing demo       | `demo-bank/README.md` |
+| `portal/`    | Partner portal: the partner's staff and MOHAR ops | `portal/README.md`    |
 | `docs/`      | Specs — the single source of truth for interfaces |                       |
 
 ## Setup (once per machine)
@@ -59,11 +60,16 @@ pnpm --filter @mohar/sdk build && pnpm --filter @mohar/api dev   # 2b. API on :4
 pnpm --filter @mohar/sdk dev                 # 3. SDK rebuilds on change
 pnpm --filter @mohar/demo-bank dev           # 4. Moher Bank on :3000
 pnpm --filter @mohar/demo-bank dev:wallet    # 5. Moher Wallet on :3001 (optional)
+pnpm --filter @mohar/portal dev              # 6. Partner portal on :3002 (optional)
 ```
 
 Open http://localhost:3000, sign in as Hassan, and buy some gold. The panel on the right shows
 every call the partner makes to MOHAR. `demo-bank/README.md` explains the screens and the
 slippage demo.
+
+The partner portal needs a user first (with the API stopped):
+`pnpm --filter @mohar/api portal:user add --email dev@demo-bank.test --role developer --partner demo-bank`.
+`portal/README.md` explains the rest.
 
 To buy, sell and check the reserve by hand, follow the curl walkthrough in
 [`docs/api.md`](docs/api.md).

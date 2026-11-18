@@ -17,6 +17,10 @@ function isBodyTooLarge(err: unknown): boolean {
 export function createApp(ctx: AppContext): Express {
   const app = express();
   app.disable("x-powered-by");
+  // So req.ip is the person's address when the portal passes a request through (sign-in limits
+  // per address, and the address in the logs), not the portal's own 127.0.0.1.
+  const trust = ctx.settings.trustProxy ?? "loopback";
+  app.set("trust proxy", trust === "false" ? false : trust === "true" ? true : trust);
   app.use(express.json({ limit: BODY_LIMIT }));
 
   app.use(partnerRoutes(ctx));

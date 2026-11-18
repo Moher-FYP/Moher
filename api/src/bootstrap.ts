@@ -13,6 +13,7 @@ import { PartnerDirectory } from "./http/auth.js";
 import { toApiTransaction } from "./http/presenters.js";
 import { ComplianceSigner } from "./chain/compliance.js";
 import { PortalAuth } from "./portal/auth.js";
+import { AuditAnchor } from "./portal/anchor.js";
 import { applyPortalSettings } from "./portal/keys.js";
 import { PortalStore } from "./portal/portal-store.js";
 import { Sealer } from "./portal/sealed.js";
@@ -127,9 +128,22 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   const queue = new SerialQueue();
   const webhooks = new WebhookSender(
     (txn) => toApiTransaction(txn, (h) => chain.explorerTxUrl(h)),
-    { allowLoopback: allowLoopbackWebhooks, recorder: portalStore },
+    {
+      allowLoopback: allowLoopbackWebhooks,
+      store: portalStore,
+      partner: (slug) => partners.get(slug),
+    },
   );
-  const settlement = new SettlementService(chain, vault, store, queue, webhooks);
+  // Retries saved before a restart carry on from here.
+  webhooks.start();
+  const settlement = new SettlementService(
+    chain,
+    vault,
+    store,
+    queue,
+    webhooks,
+    config.RESERVE_PUBLISH_INTERVAL_SECONDS,
+  );
 
   // Finish what the previous run left unfinished, before the vault book is read and before
   // any request is served.
@@ -173,13 +187,16 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   price.startKeeper();
 
   const compliance = await complianceSigner(config, deployment, local);
+  // The logs' latest hashes, written on-chain once a day from the compliance key.
+  const anchor = compliance ? new AuditAnchor(portalStore, compliance) : undefined;
+  anchor?.start(config.AUDIT_ANCHOR_HOURS);
   const portal = {
     store: portalStore,
     auth: new PortalAuth(portalStore, sealer, {
       origins: portalOrigins,
       secureCookies: !portalOrigins.every((o) => o.startsWith("http://localhost")),
     }),
-    manage: { sealer, webhooks, compliance, allowLoopbackWebhooks },
+    manage: { sealer, webhooks, compliance, anchor, allowLoopbackWebhooks },
   };
 
   return {
@@ -207,6 +224,7 @@ export async function bootstrap(config: Config): Promise<AppContext> {
       devRoutes,
       devApiKey,
       devPriceBandBps: BigInt(config.DEV_PRICE_BAND_BPS),
+      trustProxy: config.TRUST_PROXY,
     },
   };
 }

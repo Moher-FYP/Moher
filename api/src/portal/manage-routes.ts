@@ -8,7 +8,17 @@ import { checkWebhookUrl, UnsafeUrlError } from "../lib/safe-post.js";
 import type { WebhookSender } from "../services/webhooks.js";
 import { sessionPartner, signedIn, type PortalAuth } from "./auth.js";
 import { keyHash, newApiKey, newWebhookSecret } from "./keys.js";
-import type { FreezeRequest, LogInput, PortalStore, WebhookDelivery } from "./portal-store.js";
+import { generatePassword, hashPassword } from "./passwords.js";
+import { newTotpSecret, otpauthUri } from "./totp.js";
+import type {
+  FreezeRequest,
+  LogInput,
+  PortalRole,
+  PortalStore,
+  PortalUserRecord,
+  WebhookDelivery,
+} from "./portal-store.js";
+import type { AuditAnchor } from "./anchor.js";
 import type { Sealer } from "./sealed.js";
 
 /** What the portal's managing routes need beyond the read routes. */
@@ -19,6 +29,8 @@ export interface PortalManageContext {
   webhooks: WebhookSender;
   /** Absent when no compliance key is configured: freezes can be requested, not carried out. */
   compliance?: ComplianceSigner | undefined;
+  /** Writes the logs' heads on-chain (needs the compliance key). */
+  anchor?: AuditAnchor | undefined;
   allowLoopbackWebhooks: boolean;
 }
 
@@ -28,6 +40,15 @@ const FreezeBody = z.object({
   action: z.enum(["freeze", "unfreeze"]).default("freeze"),
   reason: z.string().trim().min(10).max(500),
 });
+const NewUserBody = z
+  .object({
+    email: z.string().trim().toLowerCase().max(254).pipe(z.email()),
+    role: z.enum(["viewer", "developer", "compliance", "operator"]),
+    partner: z.string().min(1).max(64).optional(),
+  })
+  .refine((b) => (b.role === "operator") === (b.partner === undefined), {
+    message: "Operators have no partner; every other role needs one",
+  });
 const DecisionBody = z.object({ note: z.string().trim().max(500).optional() });
 const ListQuery = z.object({
   transactionId: z
@@ -58,6 +79,7 @@ const presentDelivery = (d: WebhookDelivery) => ({
   status: d.status,
   attempts: d.attempts,
   createdAt: d.createdAt,
+  ...(d.nextAttemptAt ? { nextAttemptAt: d.nextAttemptAt } : {}),
   ...(d.resendOf ? { resendOf: d.resendOf } : {}),
 });
 
@@ -405,6 +427,134 @@ export function portalManageRoutes(ctx: AppContext, portal: PortalManageContext)
       detail: { requestId: request.id },
     });
     res.json(rejected);
+  });
+
+  router.post("/portal/v1/admin/audit/anchor", ...operator, async (req, res) => {
+    if (!portal.anchor) {
+      throw new ApiError(
+        501,
+        "not_implemented",
+        "Anchoring needs the compliance key (COMPLIANCE_PRIVATE_KEY)",
+      );
+    }
+    const anchor = await portal.anchor.anchorNow();
+    if (anchor) audit(req, res, { action: "audit.anchor", detail: { txHash: anchor.txHash } });
+    res.json({ anchor: anchor ?? null });
+  });
+
+  // ---------------------------------------------------------------- operator: people
+
+  const presentUser = (u: PortalUserRecord) => ({
+    id: u.id,
+    email: u.email,
+    role: u.role,
+    ...(u.partnerSlug ? { partner: u.partnerSlug } : {}),
+    status: u.status,
+    failedAttempts: u.failedAttempts,
+    ...(u.lastFailedAt ? { lastFailedAt: u.lastFailedAt } : {}),
+    createdAt: u.createdAt,
+  });
+
+  /** A new password and authenticator key, returned once. Ends the user's sessions. */
+  async function issueSecrets(user: PortalUserRecord) {
+    const password = generatePassword(user.email);
+    const totpSecret = newTotpSecret();
+    store.updateUser(user.id, {
+      passwordHash: await hashPassword(password),
+      totpSecretSealed: sealer.seal(totpSecret),
+      totpLastCounter: undefined,
+      status: "active",
+      failedAttempts: 0,
+    });
+    store.deleteSessionsOf(user.id);
+    return { password, setupKey: totpSecret, otpauthUri: otpauthUri(totpSecret, user.email) };
+  }
+
+  function otherUser(res: Response, id: string): PortalUserRecord {
+    const user = store.getUser(id);
+    if (!user) throw new ApiError(404, "not_found", `User ${id} not found`);
+    if (user.id === signedIn(res).user.id) {
+      throw new ApiError(409, "invalid_request", "Use another operator to change your own account");
+    }
+    return user;
+  }
+
+  router.get("/portal/v1/admin/users", ...operator, (_req, res) => {
+    const users = store
+      .allUsers()
+      .sort(
+        (a, b) =>
+          (a.partnerSlug ?? "").localeCompare(b.partnerSlug ?? "") ||
+          a.email.localeCompare(b.email),
+      );
+    res.json({ data: users.map(presentUser) });
+  });
+
+  router.post("/portal/v1/admin/users", ...operator, async (req, res) => {
+    const body = parse(NewUserBody, req.body);
+    if (body.partner && !ctx.partners.get(body.partner)) {
+      throw new ApiError(400, "invalid_request", `No partner "${body.partner}"`);
+    }
+    if (store.findUserByEmail(body.email)) {
+      throw new ApiError(409, "invalid_request", `${body.email} already has an account`);
+    }
+    const user: PortalUserRecord = {
+      id: newId("usr"),
+      email: body.email,
+      ...(body.partner ? { partnerSlug: body.partner } : {}),
+      role: body.role as PortalRole,
+      passwordHash: "",
+      totpSecretSealed: "",
+      status: "active",
+      failedAttempts: 0,
+      createdAt: new Date().toISOString(),
+    };
+    store.saveUser(user);
+    const secrets = await issueSecrets(user);
+    audit(req, res, {
+      action: "user.create",
+      target: user.id,
+      partner: body.partner,
+      detail: { email: body.email, role: body.role },
+    });
+    res.status(201).json({ user: presentUser(store.getUser(user.id)!), ...secrets });
+  });
+
+  router.post("/portal/v1/admin/users/:userId/reset", ...operator, async (req, res) => {
+    const user = otherUser(res, String(req.params.userId));
+    const secrets = await issueSecrets(user);
+    audit(req, res, {
+      action: "user.reset",
+      target: user.id,
+      partner: user.partnerSlug,
+      detail: { email: user.email },
+    });
+    res.json({ user: presentUser(store.getUser(user.id)!), ...secrets });
+  });
+
+  router.post("/portal/v1/admin/users/:userId/enable", ...operator, (req, res) => {
+    const user = otherUser(res, String(req.params.userId));
+    store.updateUser(user.id, { status: "active", failedAttempts: 0 });
+    audit(req, res, {
+      action: "user.enable",
+      target: user.id,
+      partner: user.partnerSlug,
+      detail: { email: user.email },
+    });
+    res.json(presentUser(store.getUser(user.id)!));
+  });
+
+  router.post("/portal/v1/admin/users/:userId/disable", ...operator, (req, res) => {
+    const user = otherUser(res, String(req.params.userId));
+    store.updateUser(user.id, { status: "disabled" });
+    store.deleteSessionsOf(user.id);
+    audit(req, res, {
+      action: "user.disable",
+      target: user.id,
+      partner: user.partnerSlug,
+      detail: { email: user.email },
+    });
+    res.json(presentUser(store.getUser(user.id)!));
   });
 
   function pendingRequest(id: string): FreezeRequest {

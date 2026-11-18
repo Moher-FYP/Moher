@@ -44,7 +44,8 @@ the API and at the partner institution.
 
 Keys in the FYP: **admin**, **relayer** (one EOA, holds all relayer roles), **vault signer**
 (used only by the mock vault service) and **compliance** (used by the API only to freeze and
-unfreeze wallets that the partner portal's operator approves). The deploy script grants
+unfreeze wallets that the partner portal's operator approves, and to anchor the portal's audit
+log on-chain once a day with a self-transaction, which needs no role). The deploy script grants
 `COMPLIANCE_ROLE` to `COMPLIANCE_ADDRESS` when it is set (Anvil account #3 locally); on a chain
 deployed before that, the admin grants it with
 `cast send <WalletRegistry> "grantRole(bytes32,address)" $(cast keccak COMPLIANCE_ROLE) <address>`. The FYP-1 report specifies 2-of-3 multisig for the

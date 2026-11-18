@@ -99,7 +99,7 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
 
   e2e:
-    name: End to end (Anvil + API + SDK)
+    name: End to end (Anvil + API + SDK + portal in a browser)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -123,5 +123,13 @@ jobs:
       - name: Build SDK
         run: pnpm --filter @mohar/sdk build
 
-      - name: Buy, sell, transfer, reserve and slippage rejection on a local chain
+      - name: Build the portal (the browser test runs it with next start)
+        run: pnpm --filter @mohar/portal build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Install Chromium for the portal browser test
+        run: pnpm --filter @mohar/api exec playwright install --with-deps chromium
+
+      - name: Buy, sell, transfer, reserve, slippage rejection, and the portal in a browser
         run: pnpm test:e2e

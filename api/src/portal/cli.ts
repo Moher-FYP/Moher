@@ -1,12 +1,12 @@
-import { randomBytes } from "node:crypto";
 import { createConnection } from "node:net";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import QRCode from "qrcode";
 import { loadConfig } from "../config.js";
 import { PartnerDirectory } from "../http/auth.js";
 import { newId } from "../lib/ids.js";
 import { LOCAL_ONLY } from "../secrets.js";
-import { hashPassword, passwordProblem } from "./passwords.js";
+import { generatePassword, hashPassword } from "./passwords.js";
 import { PortalStore, type PortalRole } from "./portal-store.js";
 import { Sealer } from "./sealed.js";
 import { newTotpSecret, otpauthUri } from "./totp.js";
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
     }
     if (store.findUserByEmail(email)) fail(`${email} already exists`);
 
-    const password = newPassword(email);
+    const password = generatePassword(email);
     const totpSecret = newTotpSecret();
     store.saveUser({
       id: newId("usr"),
@@ -108,7 +108,7 @@ async function main(): Promise<void> {
       createdAt: new Date().toISOString(),
     });
     audit("user.create", email, partner);
-    showOnce(email, password, totpSecret);
+    await showOnce(email, password, totpSecret);
     return;
   }
 
@@ -125,7 +125,7 @@ async function main(): Promise<void> {
     audit("user.disable", email, user.partnerSlug);
     console.log(`${email} is disabled and signed out everywhere.`);
   } else {
-    const password = newPassword(email);
+    const password = generatePassword(email);
     const totpSecret = newTotpSecret();
     store.updateUser(user.id, {
       passwordHash: await hashPassword(password),
@@ -136,29 +136,34 @@ async function main(): Promise<void> {
     });
     store.deleteSessionsOf(user.id);
     audit("user.reset", email, user.partnerSlug);
-    showOnce(email, password, totpSecret);
+    await showOnce(email, password, totpSecret);
   }
 }
 
-/** 24 random characters (144 bits). Generated, so it never needs typing into this terminal. */
-function newPassword(email: string): string {
-  for (;;) {
-    const candidate = randomBytes(18).toString("base64url");
-    if (!passwordProblem(candidate, email)) return candidate;
-  }
-}
-
-function showOnce(email: string, password: string, totpSecret: string): void {
+async function showOnce(email: string, password: string, totpSecret: string): Promise<void> {
+  // The QR code is what authenticator apps scan: nothing to copy or type, so no key can be
+  // mistyped or pasted into the wrong place. It holds the same secret as the setup key.
+  const qr = await QRCode.toString(otpauthUri(totpSecret, email), {
+    type: "terminal",
+    small: true,
+    errorCorrectionLevel: "M",
+  });
   console.log(`
-Shown once. Save both in the password manager now, then clear this terminal.
+Shown once. Do these now, then clear this terminal (Ctrl+L) and close it.
 
-  Email:     ${email}
-  Password:  ${password}
+  1. Authenticator app: tap +, choose "Other account" (Microsoft) or "Scan a QR code", and
+     scan this. If scanning fails, choose "Enter code manually" and paste the setup key.
 
-  Authenticator app: add an account with the setup key below (time-based, 6 digits),
-  or open this link on the phone:
-  Setup key: ${totpSecret}
-  Link:      ${otpauthUri(totpSecret, email)}
+${qr}
+     Setup key: ${totpSecret}
+
+  2. Password manager: save the email and password below (and the setup key, if you want a
+     way to set the app up again).
+
+     Email:     ${email}
+     Password:  ${password}
+
+  Never paste the setup key, the QR code or the password into chat, email or a document.
 `);
 }
 
