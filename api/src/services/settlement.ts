@@ -23,9 +23,14 @@ export interface RecoverySummary {
  * Turns accepted requests into on-chain settlement. HTTP handlers call start*() and return
  * 202 immediately; the work runs on the relayer queue, one transaction at a time:
  *
- *   mint:     vault allocates + signs → token.mint → publish reserve → webhook
- *   burn:     vault signs → token.burn → vault de-allocates → publish reserve → webhook
- *   transfer: token.operatorTransfer → vault moves allocation → publish reserve → webhook
+ *   mint:     vault allocates + signs → token.mint → webhook
+ *   burn:     vault signs → token.burn → vault de-allocates → webhook
+ *   transfer: token.operatorTransfer → vault moves allocation → webhook
+ *
+ * Each trade then asks for a reserve proof. Requests are combined: one proof is published after
+ * the trades already waiting have settled, and at most once per `reserveIntervalSeconds`. Under
+ * load (or with an interval) one proof covers many trades, which roughly halves the gas of a
+ * trade; with no queue and no interval it is still one proof per trade, as before.
  */
 export class SettlementService {
   constructor(
@@ -34,7 +39,41 @@ export class SettlementService {
     private readonly store: Store,
     private readonly queue: SerialQueue,
     private readonly webhooks: WebhookSender,
+    /** Least time between two reserve proofs. 0: publish as soon as the queue allows. */
+    private readonly reserveIntervalSeconds = 0,
   ) {}
+
+  private reserveRequested = false;
+  private lastReserveAt = 0;
+  private reserveTimer: NodeJS.Timeout | undefined;
+
+  /**
+   * Asks for a reserve proof covering every trade settled so far. Several requests before the
+   * proof goes out become one proof. Safe to call from inside queued work: the proof is queued
+   * behind the trades already waiting.
+   */
+  requestReserve(): void {
+    if (this.reserveRequested) return;
+    this.reserveRequested = true;
+    const publish = () =>
+      void this.queue.run(async () => {
+        this.reserveRequested = false;
+        this.lastReserveAt = Date.now();
+        await this.publishReserveSafely();
+      });
+    const wait = this.lastReserveAt + this.reserveIntervalSeconds * 1000 - Date.now();
+    if (wait <= 0) {
+      publish();
+    } else {
+      this.reserveTimer = setTimeout(publish, wait);
+      this.reserveTimer.unref();
+    }
+  }
+
+  /** Stops a waiting reserve timer (shutdown, tests). */
+  stop(): void {
+    if (this.reserveTimer) clearTimeout(this.reserveTimer);
+  }
 
   startMint(partner: Partner, quote: QuoteRecord, wallet: WalletRecord): TransactionRecord {
     const txn = this.create(partner, "mint", wallet, BigInt(quote.grams), quote);
@@ -227,7 +266,7 @@ export class SettlementService {
         blockNumber: Number(result.blockNumber),
         confirmedAt: new Date().toISOString(),
       });
-      await this.publishReserveSafely();
+      this.requestReserve();
       this.webhooks.send(partner, "transaction.confirmed", confirmed);
     } catch (error) {
       const failure = mapChainError(error);

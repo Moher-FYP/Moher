@@ -93,6 +93,12 @@ const ConfigSchema = z.object({
   /** Ignore a reference older than this. Four days covers a weekend plus a market holiday. */
   MIRROR_MAX_AGE_SECONDS: z.coerce.number().int().min(60).default(345_600),
 
+  /**
+   * Least seconds between two reserve proofs. 0 (default): one proof after each burst of
+   * trades, as soon as the relayer is free. 60 on a busy chain: at most one a minute, which
+   * roughly halves the gas of a trade; a wallet's proof then lags its trade by up to a minute.
+   */
+  RESERVE_PUBLISH_INTERVAL_SECONDS: z.coerce.number().int().min(0).max(3_600).default(0),
   /** Requests each partner may send per minute, across all routes. */
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(600),
   /** New customer wallets each partner may register per hour. Each one costs the relayer gas. */

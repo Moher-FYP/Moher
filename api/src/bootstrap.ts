@@ -135,7 +135,14 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   );
   // Retries saved before a restart carry on from here.
   webhooks.start();
-  const settlement = new SettlementService(chain, vault, store, queue, webhooks);
+  const settlement = new SettlementService(
+    chain,
+    vault,
+    store,
+    queue,
+    webhooks,
+    config.RESERVE_PUBLISH_INTERVAL_SECONDS,
+  );
 
   // Finish what the previous run left unfinished, before the vault book is read and before
   // any request is served.

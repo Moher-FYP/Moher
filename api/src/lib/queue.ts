@@ -12,8 +12,12 @@ export class SerialQueue {
     return result;
   }
 
-  /** Resolves once every task queued so far has finished. */
-  idle(): Promise<void> {
-    return this.tail.then(() => undefined);
+  /** Resolves once the queue is empty, including tasks that queued tasks added while running. */
+  async idle(): Promise<void> {
+    for (;;) {
+      const tail = this.tail;
+      await tail;
+      if (tail === this.tail) return;
+    }
   }
 }
