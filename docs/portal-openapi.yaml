@@ -36,9 +36,19 @@ info:
     | compliance | Viewer, plus the audit log, exports and freeze requests |
     | operator   | MOHAR's admin routes, for every partner                |
 
+    ## Secrets
+    A new API key or webhook secret is returned once, in the response that creates it, and
+    never again. Keys are stored as SHA-256 hashes; webhook secrets sealed with
+    `PORTAL_SECRET_KEY`, because MOHAR must sign with them.
+
+    ## Freezes
+    A partner's compliance user asks MOHAR to freeze or unfreeze one of its wallets; a MOHAR
+    operator approves or rejects. Approval sends the transaction from MOHAR's compliance key,
+    which can freeze and unfreeze and nothing else. Neither side can do it alone.
+
     ## Status
-    Part 1 of the portal build (sign-in, read routes, audit log). API keys, webhooks and
-    freezes follow in part 2.
+    Parts 1 and 2 of the portal build: sign-in, read routes, audit log, API keys, webhooks,
+    freezes and the operator's partner list. The portal app follows in part 3.
   contact:
     name: MOHAR FYP team (FAST-NUCES)
 servers:
@@ -50,6 +60,8 @@ tags:
   - name: Session
   - name: Partner data
   - name: Compliance
+  - name: Developers
+  - name: Operators
 
 paths:
   /portal/v1/session:
@@ -378,6 +390,425 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /portal/v1/api-keys:
+    get:
+      tags: [Developers]
+      operationId: listApiKeys
+      summary: The partner's API keys
+      description: |
+        Role `developer`. Keys made in the portal, and the first characters of keys set in
+        MOHAR's configuration (which only MOHAR can change). Never the keys themselves.
+      responses:
+        "200":
+          description: The keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Developers]
+      operationId: createApiKey
+      summary: Create an API key
+      description: Role `developer`. The key is in this response only. Store it now.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apiKey, key]
+                properties:
+                  apiKey:
+                    $ref: "#/components/schemas/ApiKey"
+                  key:
+                    type: string
+                    pattern: "^mk_test_[A-Za-z0-9_-]{43}$"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/api-keys/{keyId}/revoke:
+    post:
+      tags: [Developers]
+      operationId: revokeApiKey
+      summary: Revoke an API key
+      description: Role `developer`. The key is refused from the next request on.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^key_[A-Za-z0-9]+$"
+      responses:
+        "204":
+          description: Revoked (or already was)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /portal/v1/webhook:
+    get:
+      tags: [Developers]
+      operationId: getWebhookSettings
+      summary: The webhook URL and whether a secret is set
+      responses:
+        "200":
+          description: The settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSettings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [Developers]
+      operationId: setWebhookUrl
+      summary: Change the webhook URL
+      description: |
+        Role `developer`. https only, no credentials in the URL, and the host must not be an
+        internal address (loopback, private, link-local, unique-local, multicast, reserved).
+        The addresses it resolves to are checked again on every delivery.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  maxLength: 2048
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/webhook/rotate-secret:
+    post:
+      tags: [Developers]
+      operationId: rotateWebhookSecret
+      summary: Replace the webhook signing secret
+      description: |
+        Role `developer`. Events are signed with the new secret from now on. The secret is in
+        this response only.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+      responses:
+        "200":
+          description: The new secret
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [secret, secretSetAt]
+                properties:
+                  secret:
+                    type: string
+                    pattern: "^whsec_"
+                  secretSetAt:
+                    type: string
+                    format: date-time
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/webhook/deliveries:
+    get:
+      tags: [Developers]
+      operationId: listWebhookDeliveries
+      summary: Every webhook sent to the partner, newest first
+      parameters:
+        - name: transactionId
+          in: query
+          schema:
+            type: string
+            pattern: "^txn_[A-Za-z0-9]+$"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebhookDelivery"
+                  nextCursor:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/webhook/deliveries/{deliveryId}/resend:
+    post:
+      tags: [Developers]
+      operationId: resendWebhook
+      summary: Send an event again
+      description: |
+        Same event id and body, to the current URL, signed with the current secret. Answers
+        after the first attempt or 2 seconds, whichever is first.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - name: deliveryId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^dlv_[A-Za-z0-9]+$"
+      responses:
+        "202":
+          description: The new delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDelivery"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /portal/v1/wallets/{walletId}/freeze-requests:
+    post:
+      tags: [Compliance]
+      operationId: requestFreeze
+      summary: Ask MOHAR to freeze or unfreeze a wallet
+      description: Role `compliance`. One open request per wallet.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - name: walletId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^wal_[A-Za-z0-9]+$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                action:
+                  type: string
+                  enum: [freeze, unfreeze]
+                  default: freeze
+                reason:
+                  description: Kept by MOHAR off-chain. Never written to the chain.
+                  type: string
+                  minLength: 10
+                  maxLength: 500
+      responses:
+        "201":
+          description: Recorded, waiting for a MOHAR operator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FreezeRequest"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /portal/v1/freeze-requests:
+    get:
+      tags: [Compliance]
+      operationId: listFreezeRequests
+      summary: Freeze requests, newest first
+      description: Role `compliance` (own partner) or `operator` (every partner).
+      responses:
+        "200":
+          description: The requests
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FreezeRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/admin/partners:
+    get:
+      tags: [Operators]
+      operationId: listPartners
+      summary: Every partner, its status on-chain and its customers
+      description: Role `operator`.
+      responses:
+        "200":
+          description: The partners
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, complianceKey]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [slug, partnerId, activeOnChain, customers]
+                      properties:
+                        slug:
+                          type: string
+                        partnerId:
+                          type: string
+                        activeOnChain:
+                          type: boolean
+                        customers:
+                          type: integer
+                        webhookUrl:
+                          type: string
+                  complianceKey:
+                    description: The compliance key's address, or null if freezes cannot be carried out.
+                    type: [string, "null"]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/admin/freeze-requests/{requestId}/approve:
+    post:
+      tags: [Operators]
+      operationId: approveFreeze
+      summary: Carry out a freeze request on-chain
+      description: |
+        Role `operator`. Sends `freezeWallet` (or `unfreezeWallet`) from the compliance key and
+        waits for it. The on-chain reason code is the hash of the request id: no reason text
+        or personal data goes on-chain.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FreezeRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "501":
+          description: No compliance key is configured. Code `not_implemented`.
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi.yaml#/components/schemas/Error"
+        "502":
+          description: The chain refused the transaction; the request is marked failed.
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi.yaml#/components/schemas/Error"
+
+  /portal/v1/admin/freeze-requests/{requestId}/reject:
+    post:
+      tags: [Operators]
+      operationId: rejectFreeze
+      summary: Reject a freeze request
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FreezeRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
 components:
   securitySchemes:
     session:
@@ -395,6 +826,13 @@ components:
       schema:
         type: string
         example: http://localhost:3002
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^frz_[A-Za-z0-9]+$"
     Limit:
       name: limit
       in: query
@@ -433,6 +871,12 @@ components:
             $ref: "./openapi.yaml#/components/schemas/Error"
     NotFound:
       description: Not found, or it belongs to another partner
+      content:
+        application/json:
+          schema:
+            $ref: "./openapi.yaml#/components/schemas/Error"
+    Conflict:
+      description: Not possible in the current state (already decided, already open)
       content:
         application/json:
           schema:
@@ -709,3 +1153,136 @@ components:
           type: integer
         firstBrokenSeq:
           type: integer
+
+    ApiKey:
+      type: object
+      required: [id, name, prefix, createdAt, status]
+      properties:
+        id:
+          type: string
+          pattern: "^key_[A-Za-z0-9]+$"
+        name:
+          type: string
+        prefix:
+          description: The first 12 characters, for recognising the key.
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [active, revoked]
+
+    ApiKeyList:
+      type: object
+      required: [data, configured]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiKey"
+        configured:
+          description: Keys set in MOHAR's configuration, by their first 12 characters.
+          type: array
+          items:
+            type: object
+            required: [prefix]
+            properties:
+              prefix:
+                type: string
+
+    WebhookSettings:
+      type: object
+      required: [secretSet, localhostAllowed]
+      properties:
+        url:
+          type: string
+        secretSet:
+          type: boolean
+        secretSetAt:
+          type: string
+          format: date-time
+        localhostAllowed:
+          description: True only for the local demo (WEBHOOK_ALLOW_LOCALHOST).
+          type: boolean
+
+    WebhookDelivery:
+      type: object
+      required: [id, eventId, transactionId, event, url, status, attempts, createdAt]
+      properties:
+        id:
+          type: string
+          pattern: "^dlv_[A-Za-z0-9]+$"
+        eventId:
+          type: string
+          pattern: "^evt_[A-Za-z0-9]+$"
+        transactionId:
+          type: string
+        event:
+          type: string
+          enum: [transaction.confirmed, transaction.failed]
+        url:
+          type: string
+        status:
+          type: string
+          enum: [pending, delivered, failed]
+        attempts:
+          type: array
+          items:
+            type: object
+            required: [at, ms]
+            properties:
+              at:
+                type: string
+                format: date-time
+              statusCode:
+                type: integer
+              error:
+                type: string
+              ms:
+                type: integer
+        createdAt:
+          type: string
+          format: date-time
+        resendOf:
+          type: string
+
+    FreezeRequest:
+      type: object
+      required: [id, partnerSlug, walletId, action, reason, requestedBy, requestedAt, status]
+      properties:
+        id:
+          type: string
+          pattern: "^frz_[A-Za-z0-9]+$"
+        partnerSlug:
+          type: string
+        walletId:
+          type: string
+        action:
+          type: string
+          enum: [freeze, unfreeze]
+        reason:
+          type: string
+        requestedBy:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, done, rejected, failed]
+        decidedBy:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+        txHash:
+          type: string
+        failure:
+          type: string

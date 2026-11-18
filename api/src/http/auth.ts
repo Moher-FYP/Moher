@@ -12,6 +12,8 @@ import { ApiError } from "../errors.js";
 export class PartnerDirectory {
   private readonly byKey = new Map<string, Partner>();
   private readonly bySlug = new Map<string, Partner>();
+  /** Keys created in the partner portal (portal/api-keys.ts): key -> partner slug. */
+  private keyLookup: ((key: string) => string | undefined) | undefined;
 
   constructor(apiKeys: string, webhookUrls: string, webhookSecrets = "", fallbackSecret?: string) {
     const urls = new Map(pairs(webhookUrls));
@@ -30,7 +32,22 @@ export class PartnerDirectory {
   }
 
   fromApiKey(key: string): Partner | undefined {
-    return this.byKey.get(key);
+    const configured = this.byKey.get(key);
+    if (configured) return configured;
+    const slug = this.keyLookup?.(key);
+    return slug ? this.bySlug.get(slug) : undefined;
+  }
+
+  /** Also accept keys from this lookup (the portal's keys). */
+  useKeyLookup(lookup: (key: string) => string | undefined): void {
+    this.keyLookup = lookup;
+  }
+
+  /** The first characters of each key set at start-up, by partner, for the portal's key list. */
+  configuredKeyPrefixes(slug: string): string[] {
+    return [...this.byKey.entries()]
+      .filter(([, partner]) => partner.slug === slug)
+      .map(([key]) => key.slice(0, 12));
   }
 
   get(slug: string): Partner | undefined {

@@ -21,6 +21,7 @@ contract Deploy is Script {
         0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
     address internal constant ANVIL_ACCOUNT_1 = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
     address internal constant ANVIL_ACCOUNT_2 = 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC;
+    address internal constant ANVIL_ACCOUNT_3 = 0x90F79bf6EB2c4f870365E785982E1f101E93b906;
     uint256 internal constant ANVIL_CHAIN_ID = 31337;
 
     int256 internal constant DEFAULT_XAU_USD = 4_616e8;
@@ -34,6 +35,7 @@ contract Deploy is Script {
         address admin;
         address relayer;
         address vaultSigner;
+        address compliance; // zero = only the admin can freeze
         address feed; // zero = deploy a mock
         int256 initialMockPrice;
         uint256 maxStaleness;
@@ -70,6 +72,11 @@ contract Deploy is Script {
 
         registry.grantRole(registry.PARTNER_ADMIN_ROLE(), c.admin);
         registry.grantRole(registry.COMPLIANCE_ROLE(), c.admin);
+        // A separate key the API uses for freezes and nothing else, so freezing never needs the
+        // admin key and the relayer never gets the power to freeze (docs/contracts.md).
+        if (c.compliance != address(0)) {
+            registry.grantRole(registry.COMPLIANCE_ROLE(), c.compliance);
+        }
         registry.grantRole(registry.REGISTRAR_ROLE(), c.relayer);
 
         token.grantRole(token.PAUSER_ROLE(), c.admin);
@@ -104,6 +111,7 @@ contract Deploy is Script {
             c.deployerKey = ANVIL_KEY_0;
             c.relayer = ANVIL_ACCOUNT_1;
             c.vaultSigner = ANVIL_ACCOUNT_2;
+            c.compliance = ANVIL_ACCOUNT_3;
             c.initialMockPrice = DEFAULT_XAU_USD;
             c.maxStaleness = DEFAULT_MAX_STALENESS;
             c.demoPartnerId = keccak256(bytes(DEFAULT_PARTNER));
@@ -112,6 +120,7 @@ contract Deploy is Script {
             c.deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
             c.relayer = vm.envAddress("RELAYER_ADDRESS");
             c.vaultSigner = vm.envAddress("VAULT_SIGNER_ADDRESS");
+            c.compliance = vm.envOr("COMPLIANCE_ADDRESS", address(0));
             require(c.deployerKey != ANVIL_KEY_0, "Deploy: Anvil key on a public network");
 
             c.feed = vm.envOr("XAU_USD_FEED_ADDRESS", address(0));

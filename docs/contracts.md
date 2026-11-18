@@ -39,11 +39,15 @@ the API and at the partner institution.
 | `RESERVE_GUARDIAN_ROLE` | `MoharToken`      | `ReserveRegistry`              | `pauseMinting` on reserve shortfall          |
 | `PARTNER_ADMIN_ROLE`    | `WalletRegistry`  | MOHAR admin                    | Register / deactivate partner institutions   |
 | `REGISTRAR_ROLE`        | `WalletRegistry`  | API relayer                    | Register customer wallets                    |
-| `COMPLIANCE_ROLE`       | `WalletRegistry`  | MOHAR compliance               | Freeze / unfreeze wallets                    |
+| `COMPLIANCE_ROLE`       | `WalletRegistry`  | Compliance key (and admin)     | Freeze / unfreeze wallets                    |
 | `PUBLISHER_ROLE`        | `ReserveRegistry` | API relayer                    | Publish vault-signed reserve attestations    |
 
-Keys in the FYP: **admin**, **relayer** (one EOA, holds all relayer roles) and **vault signer**
-(used only by the mock vault service). The FYP-1 report specifies 2-of-3 multisig for the
+Keys in the FYP: **admin**, **relayer** (one EOA, holds all relayer roles), **vault signer**
+(used only by the mock vault service) and **compliance** (used by the API only to freeze and
+unfreeze wallets that the partner portal's operator approves). The deploy script grants
+`COMPLIANCE_ROLE` to `COMPLIANCE_ADDRESS` when it is set (Anvil account #3 locally); on a chain
+deployed before that, the admin grants it with
+`cast send <WalletRegistry> "grantRole(bytes32,address)" $(cast keccak COMPLIANCE_ROLE) <address>`. The FYP-1 report specifies 2-of-3 multisig for the
 attestor key and 3-of-5 for admin; in the prototype this is documented as a production control.
 
 ## Wallet rules
