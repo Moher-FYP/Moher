@@ -1,8 +1,9 @@
 """
 H2 experiment — analysis of results-<scenario>.csv written by test/H2Experiment.t.sol.
 
-Deviation = |oracle price at settlement - quoted price| / quoted price, computed exactly from the
-recorded integers. (The contract's own rule rounds it up to whole basis points; that value is
+The customer always settles at the quoted price: a settled trade moves exactly the quoted grams
+(settled_at_quoted_grams). Deviation is the gap between that quoted price and the live oracle price
+at settlement, |oracle - quote| / quote, computed exactly from the recorded integers. (The contract's own rule rounds it up to whole basis points; that value is
 the deviation_bps_rounded_up column.)
 
 Run:  python3 analyze.py   -> prints a table and writes summary.csv
@@ -13,7 +14,7 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 SCENARIOS = ["realistic", "conservative", "stress"]
-TARGET_BPS = 10  # FYP-1 H2: below 0.10%
+TARGET_BPS = 10  # the original FYP-1 H2 target (below 0.10%), kept for comparison
 LIMIT_BPS = 50  # MoharToken.maxDeviationBps()
 
 
@@ -35,7 +36,7 @@ def main() -> None:
         ]
         executed = [r for r in rows if r["outcome"] == "executed"]
         exec_devs = [d for r, d in zip(rows, devs) if r["outcome"] == "executed"]
-        at_oracle = sum(r["executed_oracle_price"] == r["oracle_price"] for r in executed)
+        at_quote = sum(abs(int(r["balance_change"])) == int(r["grams"]) for r in executed)
         rejected_moved = sum(
             r["balance_change"] != "0" for r in rows if r["outcome"] == "rejected"
         )
@@ -45,7 +46,7 @@ def main() -> None:
                 "trials": len(rows),
                 "executed": len(executed),
                 "rejected": len(rows) - len(executed),
-                "executed_at_oracle_price": at_oracle,
+                "settled_at_quoted_grams": at_quote,
                 "rejected_that_moved_gold": rejected_moved,
                 "median_dev_bps": round(pct(devs, 0.5), 2),
                 "p95_dev_bps": round(pct(devs, 0.95), 2),
