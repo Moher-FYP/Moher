@@ -5,14 +5,22 @@ import {IMoharToken} from "../src/interfaces/IMoharToken.sol";
 import {MoharTypes} from "../src/libraries/MoharTypes.sol";
 import {MoharTestBase} from "./utils/MoharTestBase.sol";
 
-/// @title H2 — Slippage-elimination hypothesis (FYP-1 §2.5)
-/// @notice "Mint and burn execute at the oracle price read in the same block, and never more than
-///         0.50% away from the price quoted to the customer."
+/// @title H2 — Slippage-elimination hypothesis (FYP-1 §2.5, restated in FYP-2)
+/// @notice "Customers pay exactly the price they confirmed (zero slippage against the quote).
+///         A trade settles only if that price is within maxDeviationBps (0.50%) of the live oracle
+///         price; otherwise it is cancelled and nothing moves."
+///
+///         The quoted price is fixed when the customer accepts, which is what the spot-exchange
+///         (sarf) rule needs: a known price, settled hand to hand. Settling at whatever the oracle
+///         reads in the block would leave the price unknown at acceptance. The deviation bound is a
+///         fairness control against stale quotes, not a price the customer pays.
 ///
 ///         Each fuzz test runs 1,000 randomized trades (foundry.toml `[fuzz] runs = 1000`) with the
-///         oracle moving anywhere within ±5% of the quote. Two properties are asserted:
-///         P1  Executed price == oracle price at execution (zero deviation, recorded in the event).
+///         oracle moving anywhere within ±5% of the quote. Three properties are asserted:
+///         P1  The customer receives exactly the quoted grams, at the quoted price (no slippage).
 ///         P2  Any trade whose |oracle − quote| exceeds maxDeviationBps reverts; nothing moves.
+///         P3  Every trade that settles was within maxDeviationBps of the oracle, and the event
+///             records both prices so the gap can be audited trade by trade.
 ///
 ///         Run: forge test --match-contract H2SlippageTest -vv
 contract H2SlippageTest is MoharTestBase {
@@ -23,7 +31,7 @@ contract H2SlippageTest is MoharTestBase {
         feed.updateAnswer(int256(oraclePrice));
     }
 
-    function testFuzz_H2_mintExecutesAtOraclePriceWithinBound(uint256 gramsSeed, uint256 oracleSeed)
+    function testFuzz_H2_mintPaysQuotedPriceWithinBound(uint256 gramsSeed, uint256 oracleSeed)
         public
     {
         uint256 grams = bound(gramsSeed, 1, MAX_TRADE_GRAMS);
@@ -44,16 +52,19 @@ contract H2SlippageTest is MoharTestBase {
             token.mint(a, PRICE, sig);
             assertEq(token.totalSupply(), 0);
         } else {
-            // P1: executes, and the recorded execution price is exactly the oracle price
+            // P3: only trades within the bound settle; the event records quote and oracle
+            assertLe(deviation, token.maxDeviationBps());
             vm.expectEmit(address(token));
             emit IMoharToken.Minted(alice, grams, oraclePrice, PRICE, a.allocationRef);
             vm.prank(relayer);
             token.mint(a, PRICE, sig);
+            // P1: exactly the quoted grams, whatever the oracle did in between
             assertEq(token.balanceOf(alice), grams);
+            assertEq(token.totalSupply(), grams);
         }
     }
 
-    function testFuzz_H2_burnExecutesAtOraclePriceWithinBound(uint256 gramsSeed, uint256 oracleSeed)
+    function testFuzz_H2_burnPaysQuotedPriceWithinBound(uint256 gramsSeed, uint256 oracleSeed)
         public
     {
         uint256 grams = bound(gramsSeed, 1, MAX_TRADE_GRAMS);
@@ -74,11 +85,15 @@ contract H2SlippageTest is MoharTestBase {
             token.burn(d, PRICE, sig);
             assertEq(token.balanceOf(alice), grams);
         } else {
+            // P3
+            assertLe(deviation, token.maxDeviationBps());
             vm.expectEmit(address(token));
             emit IMoharToken.Burned(alice, grams, oraclePrice, PRICE, d.deallocationRef);
             vm.prank(relayer);
             token.burn(d, PRICE, sig);
+            // P1: exactly the quoted grams leave the wallet; the payout is the quoted PKR
             assertEq(token.balanceOf(alice), 0);
+            assertEq(token.totalSupply(), 0);
         }
     }
 

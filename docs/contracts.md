@@ -1,6 +1,6 @@
 # Contracts specification
 
-Status: **implemented and tested** (`contracts/src/`, 72 Foundry tests including the H2 fuzz
+Status: **implemented and tested** (`contracts/src/`, 74 Foundry tests including the H2 fuzz
 suite). Source of truth: `contracts/src/interfaces/` and `contracts/src/libraries/MoharTypes.sol`.
 If this document and the code disagree, fix one of them in the same PR.
 
@@ -124,7 +124,7 @@ vice versa. The API signer (viem `signTypedData`) must use these exact strings; 
 ## Tests and the H2 hypothesis
 
 ```bash
-pnpm contracts:test                                            # all 72 tests
+pnpm contracts:test                                            # all 74 tests
 cd contracts && forge test --match-contract H2SlippageTest -vv # the H2 evidence only
 ```
 
@@ -132,9 +132,18 @@ cd contracts && forge test --match-contract H2SlippageTest -vv # the H2 evidence
 test runs 1,000 randomized trades (up to one tonne) while the oracle moves anywhere within ±5%
 of the quote, and asserts:
 
-- **P1** — every executed mint/burn records an execution price exactly equal to the oracle
-  price in that block (zero deviation);
-- **P2** — every trade whose quote-to-oracle move exceeds 0.50% reverts and moves nothing.
+- **P1:** the customer receives exactly the quoted grams at the quoted price, whatever the
+  oracle did in between (zero slippage against the quote);
+- **P2:** every trade whose quote-to-oracle move exceeds 0.50% reverts and moves nothing;
+- **P3:** every trade that settles was within 0.50% of the live oracle price. The `Minted` and
+  `Burned` events record both prices, so the gap can be audited trade by trade.
+
+H2 is about the quote, not the oracle. The price is fixed when the customer accepts, which the
+spot-exchange (sarf) rule needs: a known price, settled hand to hand. Settling at whatever the
+oracle reads in the block would leave the price unknown at acceptance (gharar). The 0.50% bound
+is a fairness control against stale quotes. It is not a price the customer pays. The FYP-1
+wording ("executed price matches the oracle price with zero deviation") overstated this and is
+corrected in the FYP-2 report.
 
 ### H2 experiment (Chapter 5 evidence)
 
