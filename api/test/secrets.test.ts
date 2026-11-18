@@ -106,21 +106,16 @@ describe("webhooks per partner", () => {
 
   it("signs each partner's events with that partner's own secret", async () => {
     const sent: { url: string; body: string; signature: string }[] = [];
-    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
-      const headers = init?.headers as Record<string, string>;
-      sent.push({
-        url: String(url),
-        body: String(init?.body),
-        signature: headers["Mohar-Signature"]!,
-      });
-      return new Response(null, { status: 200 });
-    }) as typeof fetch;
+    const post = async (url: string, headers: Record<string, string>, body: string) => {
+      sent.push({ url, body, signature: headers["Mohar-Signature"]! });
+      return { status: 200 };
+    };
     const directory = new PartnerDirectory(
       `${KEY_A}=bank-a,${KEY_B}=bank-b`,
       URLS,
       `bank-a=${SECRET_A},bank-b=${SECRET_B}`,
     );
-    const sender = new WebhookSender((t) => ({ id: t.id, status: t.status }), fetchImpl);
+    const sender = new WebhookSender((t) => ({ id: t.id, status: t.status }), { post });
 
     sender.send(directory.get("bank-a")!, "transaction.confirmed", txn);
     sender.send(directory.get("bank-b")!, "transaction.confirmed", txn);

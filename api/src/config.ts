@@ -26,6 +26,15 @@ const ConfigSchema = z.object({
     .string()
     .regex(/^0x[0-9a-fA-F]{64}$/)
     .optional(),
+  /**
+   * The compliance key: freezes and unfreezes wallets an operator approves in the portal, and
+   * nothing else. Must hold COMPLIANCE_ROLE on the WalletRegistry. Local Anvil uses account #3,
+   * which the deploy script grants. Without it, freeze requests can be made but not carried out.
+   */
+  COMPLIANCE_PRIVATE_KEY: z
+    .string()
+    .regex(/^0x[0-9a-fA-F]{64}$/)
+    .optional(),
   /** Custodial customer wallets are derived from this mnemonic (m/44'/60'/1'/0/i). */
   WALLET_MNEMONIC: z.string().optional(),
 
@@ -99,6 +108,12 @@ const ConfigSchema = z.object({
    * a public default; elsewhere it must be set (openssl rand -hex 32).
    */
   PORTAL_SECRET_KEY: z.string().min(16).optional(),
+  /**
+   * Allow webhooks to http://localhost (the demo apps run there). Defaults to on for local
+   * Anvil, off elsewhere; set true for the Amoy demo, where the partner apps are still local.
+   * Private, link-local and other internal addresses are refused either way.
+   */
+  WEBHOOK_ALLOW_LOCALHOST: z.enum(["true", "false"]).optional(),
   /** Where the JSON store lives. ":memory:" keeps everything in memory (tests). */
   DATA_DIR: z.string().default(".data"),
   /** Enables /dev routes (move the mock gold price). Defaults to on for local chains. */
@@ -134,4 +149,6 @@ export const ANVIL_DEFAULTS = {
   relayerPrivateKey: "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
   vaultSignerPrivateKey: "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
   walletMnemonic: "test test test test test test test test test test test junk",
+  /** Account #3, granted COMPLIANCE_ROLE by the deploy script on Anvil. */
+  compliancePrivateKey: "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
 } as const;

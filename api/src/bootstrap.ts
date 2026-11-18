@@ -11,7 +11,9 @@ import { kycFingerprint } from "./domain/kyc.js";
 import { parseKycLimits } from "./domain/kyc-limits.js";
 import { PartnerDirectory } from "./http/auth.js";
 import { toApiTransaction } from "./http/presenters.js";
+import { ComplianceSigner } from "./chain/compliance.js";
 import { PortalAuth } from "./portal/auth.js";
+import { applyPortalSettings } from "./portal/keys.js";
 import { PortalStore } from "./portal/portal-store.js";
 import { Sealer } from "./portal/sealed.js";
 import { findWeakSecrets, LOCAL_ONLY } from "./secrets.js";
@@ -108,8 +110,25 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   const { reset } = store.open(await chain.chainMarker());
   if (reset) console.log("Started a fresh store for this chain.");
 
+  // The partner portal: its own store (users, keys, logs, deliveries), and settings partners
+  // changed there, applied over the start-up configuration before anything is sent.
+  const portalOrigins = config.PORTAL_ORIGINS.split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+  const portalStore = new PortalStore(
+    config.DATA_DIR === ":memory:" ? null : join(config.DATA_DIR, "portal.json"),
+  );
+  const sealer = new Sealer(portalSecretKey ?? LOCAL_ONLY.portalSecretKey);
+  applyPortalSettings(partners, portalStore, sealer);
+  const allowLoopbackWebhooks = config.WEBHOOK_ALLOW_LOCALHOST
+    ? config.WEBHOOK_ALLOW_LOCALHOST === "true"
+    : local;
+
   const queue = new SerialQueue();
-  const webhooks = new WebhookSender((txn) => toApiTransaction(txn, (h) => chain.explorerTxUrl(h)));
+  const webhooks = new WebhookSender(
+    (txn) => toApiTransaction(txn, (h) => chain.explorerTxUrl(h)),
+    { allowLoopback: allowLoopbackWebhooks, recorder: portalStore },
+  );
   const settlement = new SettlementService(chain, vault, store, queue, webhooks);
 
   // Finish what the previous run left unfinished, before the vault book is read and before
@@ -153,18 +172,14 @@ export async function bootstrap(config: Config): Promise<AppContext> {
   if (mirror) await price.tick(); // start from the market price, not the deploy-time one
   price.startKeeper();
 
-  const portalOrigins = config.PORTAL_ORIGINS.split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
-  const portalStore = new PortalStore(
-    config.DATA_DIR === ":memory:" ? null : join(config.DATA_DIR, "portal.json"),
-  );
+  const compliance = await complianceSigner(config, deployment, local);
   const portal = {
     store: portalStore,
-    auth: new PortalAuth(portalStore, new Sealer(portalSecretKey ?? LOCAL_ONLY.portalSecretKey), {
+    auth: new PortalAuth(portalStore, sealer, {
       origins: portalOrigins,
       secureCookies: !portalOrigins.every((o) => o.startsWith("http://localhost")),
     }),
+    manage: { sealer, webhooks, compliance, allowLoopbackWebhooks },
   };
 
   return {
@@ -194,6 +209,36 @@ export async function bootstrap(config: Config): Promise<AppContext> {
       devPriceBandBps: BigInt(config.DEV_PRICE_BAND_BPS),
     },
   };
+}
+
+/**
+ * The compliance key, if there is one and it holds COMPLIANCE_ROLE. Without it the portal still
+ * records freeze requests; an operator just cannot carry them out.
+ */
+async function complianceSigner(
+  config: Config,
+  deployment: Deployment,
+  local: boolean,
+): Promise<ComplianceSigner | undefined> {
+  const key =
+    config.COMPLIANCE_PRIVATE_KEY ?? (local ? ANVIL_DEFAULTS.compliancePrivateKey : undefined);
+  if (!key) {
+    console.warn("No COMPLIANCE_PRIVATE_KEY: portal freeze requests cannot be carried out.");
+    return undefined;
+  }
+  const signer = new ComplianceSigner(deployment, config.RPC_URL, key as Hex);
+  if (signer.address === deployment.relayer) {
+    throw new Error("COMPLIANCE_PRIVATE_KEY must not be the relayer's key");
+  }
+  if (!(await signer.hasRole())) {
+    console.warn(
+      `The compliance key ${signer.address} does not hold COMPLIANCE_ROLE, so freezes cannot be carried out.\n` +
+        `  The admin grants it with:\n` +
+        `  cast send ${deployment.walletRegistry} "grantRole(bytes32,address)" $(cast keccak COMPLIANCE_ROLE) ${signer.address} --rpc-url <RPC> --private-key <admin key>`,
+    );
+    return undefined;
+  }
+  return signer;
 }
 
 /** Builds the price mirror when MIRROR_* is configured; checks the reference feed is gold. */

@@ -15,11 +15,14 @@ import {
   type PortalAuth,
   type SignedIn,
 } from "./auth.js";
+import { portalManageRoutes, type PortalManageContext } from "./manage-routes.js";
 import type { PortalStore } from "./portal-store.js";
 
 export interface PortalContext {
   store: PortalStore;
   auth: PortalAuth;
+  /** API keys, webhooks, freezes (manage-routes.ts). Absent: read routes only. */
+  manage?: Omit<PortalManageContext, "store" | "auth">;
 }
 
 const SignInBody = z.object({
@@ -90,6 +93,7 @@ export function portalRoutes(ctx: AppContext, portal: PortalContext): Router {
     toApiTransaction(txn, (h) => ctx.chain.explorerTxUrl(h));
 
   router.use("/portal/v1", auth.sameOrigin());
+  if (portal.manage) router.use(portalManageRoutes(ctx, { ...portal.manage, store, auth }));
 
   function ownWallet(res: Response, id: string): WalletRecord {
     const wallet = ctx.store.getWallet(id);
