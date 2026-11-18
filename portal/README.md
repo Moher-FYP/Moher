@@ -40,18 +40,28 @@ stopped. Against Amoy, prefix both API commands with `DOTENV_CONFIG_PATH=.env.am
 A freeze is asked for on a customer's page by the partner's compliance user and carried out on
 the Partners and freezes page by a MOHAR operator, from MOHAR's compliance key.
 
+After the first operator exists, add everyone else from the operator page: it shows the new
+person's QR code and password once, and lists locked accounts so an operator can unlock them.
+
+## Tests
+
+`api/test/e2e/portal.e2e.test.ts` runs this app (`next start`) against a real local chain and
+API, in Chromium through Playwright: the security headers, a refused wrong code, a freeze asked
+for by compliance and carried out by an operator, a new person's QR code, and an API key that
+works until it is revoked. Locally it needs the portal built and
+`pnpm --filter @mohar/api exec playwright install chromium`; CI does both.
+
 ## How it connects
 
-The browser only talks to the portal's own origin. `next.config.ts` passes `/portal/v1/*`
-through to the API, so the API's session cookie (`HttpOnly`, `SameSite=Strict`, path
+The browser only talks to the portal's own origin. A route (`src/app/portal/v1/[...path]/route.ts`)
+passes `/portal/v1/*` through to the API named by `MOHAR_API_URL`, read on every request, so the API's session cookie (`HttpOnly`, `SameSite=Strict`, path
 `/portal`) and its `Origin` check work as if the API were on this origin, and the API itself can
 stay on `127.0.0.1`. A 401 anywhere (the session ends after 15 idle minutes or 8 hours) sends the
 user back to sign in.
 
-Because every request reaches the API through this proxy, the API sees the portal's address,
-not the user's: the logs show `127.0.0.1`, and the per-address sign-in limit counts all portal
-users together. The per-account slow-down and lock still apply to each user. A real deployment
-puts both behind one reverse proxy that passes the client's address.
+The route forwards the client's address in `X-Forwarded-For`, and the API trusts that header
+only from this machine (`TRUST_PROXY=loopback`), so the logs and the per-address sign-in limit
+see the person, not the portal. Behind a reverse proxy, that proxy must set the header.
 
 ## Changing the look
 

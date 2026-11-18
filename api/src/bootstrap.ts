@@ -207,6 +207,7 @@ export async function bootstrap(config: Config): Promise<AppContext> {
       devRoutes,
       devApiKey,
       devPriceBandBps: BigInt(config.DEV_PRICE_BAND_BPS),
+      trustProxy: config.TRUST_PROXY,
     },
   };
 }

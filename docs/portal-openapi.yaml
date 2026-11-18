@@ -809,6 +809,142 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /portal/v1/admin/users:
+    get:
+      tags: [Operators]
+      operationId: listUsers
+      summary: Every portal user, with locked accounts visible
+      description: Role `operator`. Never includes a password hash or authenticator secret.
+      responses:
+        "200":
+          description: The users
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ManagedUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Operators]
+      operationId: createUser
+      summary: Add a portal user
+      description: |
+        Role `operator`. Generates the password and the authenticator key; both are in this
+        response only. Operators have no partner; every other role needs one.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  $ref: "#/components/schemas/Role"
+                partner:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssuedSecrets"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /portal/v1/admin/users/{userId}/reset:
+    post:
+      tags: [Operators]
+      operationId: resetUser
+      summary: New password and authenticator key; ends the user's sessions
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The new secrets, once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssuedSecrets"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /portal/v1/admin/users/{userId}/enable:
+    post:
+      tags: [Operators]
+      operationId: enableUser
+      summary: Unlock an account and clear its failed attempts
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagedUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /portal/v1/admin/users/{userId}/disable:
+    post:
+      tags: [Operators]
+      operationId: disableUser
+      summary: Lock an account and end its sessions
+      description: An operator cannot disable their own account.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagedUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
 components:
   securitySchemes:
     session:
@@ -826,6 +962,13 @@ components:
       schema:
         type: string
         example: http://localhost:3002
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^usr_[A-Za-z0-9]+$"
     RequestId:
       name: requestId
       in: path
@@ -1285,4 +1428,44 @@ components:
         txHash:
           type: string
         failure:
+          type: string
+
+    ManagedUser:
+      type: object
+      required: [id, email, role, status, failedAttempts, createdAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        partner:
+          type: string
+        status:
+          type: string
+          enum: [active, disabled]
+        failedAttempts:
+          description: Wrong sign-ins in a row. From 5 each try waits longer; at 20 the account is disabled.
+          type: integer
+        lastFailedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    IssuedSecrets:
+      type: object
+      required: [user, password, setupKey, otpauthUri]
+      properties:
+        user:
+          $ref: "#/components/schemas/ManagedUser"
+        password:
+          type: string
+        setupKey:
+          description: The authenticator secret in base32, for apps that cannot scan.
+          type: string
+        otpauthUri:
+          description: The same secret as an otpauth:// link, which the portal shows as a QR code.
           type: string

@@ -372,3 +372,108 @@ describe("operator view", () => {
     expect(res.body.data[0]).toMatchObject({ activeOnChain: true, customers: 1 });
   });
 });
+
+describe("operators manage people", () => {
+  it("add a user with a new password and authenticator key, shown once", async () => {
+    const { app, signIn, portalStore } = await setup();
+    const ops = await signIn("ops@mohar.test");
+    const created = await request(app)
+      .post("/portal/v1/admin/users")
+      .set("Cookie", ops)
+      .set("Origin", ORIGIN)
+      .send({ email: "New.Analyst@Bank.test", role: "viewer", partner: "demo-bank" });
+    expect(created.status).toBe(201);
+    expect(created.body.user).toMatchObject({
+      email: "new.analyst@bank.test",
+      role: "viewer",
+      status: "active",
+    });
+    expect(created.body.password).toHaveLength(24);
+    expect(created.body.otpauthUri).toContain(`secret=${created.body.setupKey}`);
+    // Neither secret is stored as given.
+    expect(JSON.stringify(portalStore)).not.toContain(created.body.password);
+    expect(JSON.stringify(portalStore)).not.toContain(created.body.setupKey);
+
+    const list = await request(app).get("/portal/v1/admin/users").set("Cookie", ops);
+    expect(JSON.stringify(list.body)).not.toContain("passwordHash");
+    expect(list.body.data.map((u: { email: string }) => u.email)).toContain(
+      "new.analyst@bank.test",
+    );
+
+    const again = await request(app)
+      .post("/portal/v1/admin/users")
+      .set("Cookie", ops)
+      .set("Origin", ORIGIN)
+      .send({ email: "new.analyst@bank.test", role: "viewer", partner: "demo-bank" });
+    expect(again.status).toBe(409);
+    const operatorWithPartner = await request(app)
+      .post("/portal/v1/admin/users")
+      .set("Cookie", ops)
+      .set("Origin", ORIGIN)
+      .send({ email: "x@mohar.test", role: "operator", partner: "demo-bank" });
+    expect(operatorWithPartner.status).toBe(400);
+  });
+
+  it("unlock a locked account, and reset one, which signs it out", async () => {
+    const { app, signIn, portalStore } = await setup();
+    const viewer = await signIn("viewer@bank.test");
+    const user = portalStore.findUserByEmail("viewer@bank.test")!;
+    portalStore.updateUser(user.id, { status: "disabled", failedAttempts: 20 });
+
+    const ops = await signIn("ops@mohar.test");
+    const list = await request(app).get("/portal/v1/admin/users").set("Cookie", ops);
+    expect(list.body.data.find((u: { id: string }) => u.id === user.id)).toMatchObject({
+      status: "disabled",
+      failedAttempts: 20,
+    });
+
+    const enable = await request(app)
+      .post(`/portal/v1/admin/users/${user.id}/enable`)
+      .set("Cookie", ops)
+      .set("Origin", ORIGIN);
+    expect(enable.body).toMatchObject({ status: "active", failedAttempts: 0 });
+
+    const reset = await request(app)
+      .post(`/portal/v1/admin/users/${user.id}/reset`)
+      .set("Cookie", ops)
+      .set("Origin", ORIGIN);
+    expect(reset.status).toBe(200);
+    expect(reset.body.setupKey).toMatch(/^[A-Z2-7]{32}$/);
+    expect((await request(app).get("/portal/v1/me").set("Cookie", viewer)).status).toBe(401);
+  });
+
+  it("are the only ones who can, and cannot lock themselves out", async () => {
+    const { app, signIn, portalStore } = await setup();
+    const comp = await signIn("comp@bank.test");
+    const denied = await request(app)
+      .post("/portal/v1/admin/users")
+      .set("Cookie", comp)
+      .set("Origin", ORIGIN)
+      .send({ email: "a@bank.test", role: "viewer", partner: "demo-bank" });
+    expect(denied.status).toBe(403);
+
+    const ops = await signIn("ops@mohar.test");
+    const self = portalStore.findUserByEmail("ops@mohar.test")!;
+    const own = await request(app)
+      .post(`/portal/v1/admin/users/${self.id}/disable`)
+      .set("Cookie", ops)
+      .set("Origin", ORIGIN);
+    expect(own.status).toBe(409);
+  });
+});
+
+describe("client address behind the portal", () => {
+  it("logs the address the local proxy reports", async () => {
+    const { app, codeFor, portalStore } = await setup();
+    await request(app)
+      .post("/portal/v1/session")
+      .set("Origin", ORIGIN)
+      .set("X-Forwarded-For", "203.0.113.9")
+      .send({
+        email: "dev@bank.test",
+        password: "correct horse battery staple",
+        code: codeFor("dev@bank.test"),
+      });
+    expect(portalStore.rawLog("security").at(-1)!.ip).toBe("203.0.113.9");
+  });
+});

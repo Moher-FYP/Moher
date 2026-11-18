@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { FreezeTable } from "@/components/FreezeTable";
+import { People } from "@/components/People";
 import {
   Badge,
   Button,
@@ -49,7 +50,7 @@ export default function OperatorPage() {
   const key = partners.data?.complianceKey;
   return (
     <>
-      <PageHeader title="Partners and freezes" subtitle="MOHAR operators only." />
+      <PageHeader title="Partners, people and freezes" subtitle="MOHAR operators only." />
       <div className="space-y-6">
         <Card
           title="Freeze requests"
@@ -98,6 +99,7 @@ export default function OperatorPage() {
             />
           ) : null}
         </Card>
+        <People />
         <Card title="Partners">
           <ErrorBox error={partners.error} />
           {partners.loading ? <Loading /> : null}

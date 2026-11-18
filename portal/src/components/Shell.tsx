@@ -30,7 +30,7 @@ const NAV: NavItem[] = [
   { href: "/limits", label: "Limits and reserve", roles: PARTNER },
   { href: "/developers", label: "API keys and webhooks", roles: ["developer"] },
   { href: "/compliance", label: "Compliance", roles: ["compliance"] },
-  { href: "/operator", label: "Partners and freezes", roles: ["operator"] },
+  { href: "/operator", label: "Partners, people and freezes", roles: ["operator"] },
   { href: "/compliance", label: "Audit log", roles: ["operator"] },
 ];
 

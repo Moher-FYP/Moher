@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { hash, verify } from "@node-rs/argon2";
@@ -64,4 +65,12 @@ let dummy: Promise<string> | undefined;
 export function dummyHash(): Promise<string> {
   dummy ??= hashPassword("not-a-real-password-for-timing");
   return dummy;
+}
+
+/** A new random password: 24 characters (144 bits), so nobody has to choose one. */
+export function generatePassword(email: string): string {
+  for (;;) {
+    const candidate = randomBytes(18).toString("base64url");
+    if (!passwordProblem(candidate, email)) return candidate;
+  }
 }

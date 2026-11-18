@@ -114,6 +114,13 @@ const ConfigSchema = z.object({
    * Private, link-local and other internal addresses are refused either way.
    */
   WEBHOOK_ALLOW_LOCALHOST: z.enum(["true", "false"]).optional(),
+  /**
+   * Which proxies may tell the API the client's real address (X-Forwarded-For), in Express's
+   * "trust proxy" form. Default "loopback": the partner portal on this machine passes portal
+   * requests through, and the API listens on 127.0.0.1, so only local processes can set it.
+   * Use "false" if the API is ever exposed directly.
+   */
+  TRUST_PROXY: z.string().default("loopback"),
   /** Where the JSON store lives. ":memory:" keeps everything in memory (tests). */
   DATA_DIR: z.string().default(".data"),
   /** Enables /dev routes (move the mock gold price). Defaults to on for local chains. */

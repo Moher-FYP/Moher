@@ -217,3 +217,21 @@ export interface PartnerRow {
   customers: number;
   webhookUrl?: string;
 }
+
+export interface ManagedUser {
+  id: string;
+  email: string;
+  role: Role;
+  partner?: string;
+  status: "active" | "disabled";
+  failedAttempts: number;
+  lastFailedAt?: string;
+  createdAt: string;
+}
+
+export interface IssuedSecrets {
+  user: ManagedUser;
+  password: string;
+  setupKey: string;
+  otpauthUri: string;
+}

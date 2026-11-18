@@ -118,7 +118,9 @@ servers. They are described in `docs/portal-openapi.yaml` and live in `src/porta
 | Freezes         | `src/chain/compliance.ts`    | A partner's compliance user asks; a MOHAR operator approves; the compliance key (`COMPLIANCE_PRIVATE_KEY`, freeze and unfreeze only) sends it. The reason stays off-chain; the chain gets the hash of the request id.                                                                                                       |
 | Logs            | `src/portal/portal-store.ts` | An audit log (changes, exports) and a security log (sign-ins, refusals), each hash-chained; `GET /portal/v1/audit/verify` recomputes both.                                                                                                                                                                                  |
 
-Portal users are added from the terminal, with the API stopped (it would overwrite the file):
+A MOHAR operator adds, unlocks, locks and resets portal users on the portal's operator page
+(`/portal/v1/admin/users`); a new or reset user's password and QR code are shown once. The very
+first operator is added from the terminal, with the API stopped (it would overwrite the file):
 
 ```bash
 pnpm --filter @mohar/api portal:user add --email dev@demo-bank.test --role developer --partner demo-bank
