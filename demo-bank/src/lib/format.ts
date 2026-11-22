@@ -91,3 +91,31 @@ function limitMessage(error: unknown): string | undefined {
       : "You cannot receive more gold until some of the limit frees up.";
   return `That is over your account's limit ${reason}. Your limits are ${caps}. ${now}`;
 }
+
+const wholeFormat = new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 });
+
+/** Whole rupees for headline figures: "Rs 442,799". Receipts keep the paisa (pkr). */
+export function pkrWhole(amount: string | number): string {
+  return `Rs ${wholeFormat.format(Math.round(Number(amount)))}`;
+}
+
+/** Grams as a figure without the unit: "12.4813". */
+export function gramsFigure(amount: string, places = 4): string {
+  return Number(amount).toFixed(places);
+}
+
+/** One tola, the weight Pakistani families count gold in. */
+export const GRAMS_PER_TOLA = 11.6638;
+
+export function tola(amount: string): string {
+  const t = Number(amount) / GRAMS_PER_TOLA;
+  return t >= 0.1 ? t.toFixed(2) : t.toFixed(3);
+}
+
+/** "Hassan Raza" -> "HR". */
+export function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return (
+    (parts[0]?.[0] ?? "") + (parts.length > 1 ? (parts.at(-1)?.[0] ?? "") : "")
+  ).toUpperCase();
+}

@@ -1,62 +1,47 @@
+import { connection } from "next/server";
 import { quoteBuy } from "@/app/actions";
-import { AppHeader } from "@/components/AppHeader";
-import { FormError, fieldClass, primaryButton } from "@/components/ui";
+import { AmountPad } from "@/components/AmountPad";
+import { Actions, BackHeader, FormError, RoundIcon, primaryButton } from "@/components/kit";
+import { getMohar } from "@/lib/mohar";
+import { partner } from "@/lib/partner";
 import { requireCustomer } from "@/lib/session";
 
-const PRESETS = ["1000", "5000", "25000"];
-
 export default async function Buy({ searchParams }: PageProps<"/buy">) {
-  const customer = await requireCustomer();
+  await connection();
+  await requireCustomer();
   const { error } = await searchParams;
+  const p = partner();
+  const price = await getMohar().getPrice();
 
   return (
     <>
-      <AppHeader customer={customer} title="Buy gold" backHref="/" />
-      <form action={quoteBuy} className="space-y-5 p-5">
-        <FormError message={typeof error === "string" ? error : undefined} />
-        <div className="space-y-2">
-          <label htmlFor="amountPkr" className="block font-semibold">
-            How much do you want to spend?
-          </label>
-          <div className="relative">
-            <span className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-lg font-semibold text-ink-soft">
-              Rs
-            </span>
-            <input
-              id="amountPkr"
-              name="amountPkr"
-              inputMode="decimal"
-              autoComplete="off"
-              required
-              placeholder="5,000"
-              className={`${fieldClass} pl-12`}
-            />
-          </div>
-          <p className="text-sm text-ink-soft">From Rs 100. Paid from your current account.</p>
+      <BackHeader title="Buy gold" backHref="/" />
+      <form action={quoteBuy} className="flex flex-1 flex-col">
+        <div className="px-5">
+          <FormError message={typeof error === "string" ? error : undefined} />
         </div>
-
-        <button type="submit" className={primaryButton}>
-          See price
-        </button>
-        <fieldset className="flex flex-wrap gap-2">
-          <legend className="mb-2 text-sm text-ink-soft">Or pick an amount</legend>
-          {PRESETS.map((amount) => (
-            <button
-              key={amount}
-              type="submit"
-              formNoValidate
-              name="amountPkr"
-              value={amount}
-              className="flex-1 rounded-full border border-line px-3 py-2 text-sm font-semibold hover:border-bank"
-            >
-              Rs {Number(amount).toLocaleString("en-PK")}
-            </button>
-          ))}
-        </fieldset>
-        <p className="text-sm text-ink-soft">
-          You&apos;ll see the exact grams and fees before anything is charged. The price is held for
-          60 seconds.
-        </p>
+        <AmountPad
+          modes={["pkr"]}
+          labels={{ pkr: "Amount to spend" }}
+          pricePerGramPkr={Number(price.pricePerGramPkr)}
+          presets={p.presets}
+        >
+          <div className="ring-line flex items-center gap-3 rounded-[18px] bg-surface px-3.5 py-3">
+            <RoundIcon name="card" tone="bg-hero text-ink" size={38} />
+            <span className="flex-1">
+              <span className="block text-xs text-ink-soft">Pay from</span>
+              <span className="block text-[15px] font-bold">{p.ownFunds}</span>
+              <span className="block text-[12.5px] text-ink-soft">
+                Or another bank by Raast: choose on the next screen
+              </span>
+            </span>
+          </div>
+        </AmountPad>
+        <Actions note="You see the exact grams and fees before anything is charged.">
+          <button type="submit" className={primaryButton}>
+            Review price
+          </button>
+        </Actions>
       </form>
     </>
   );

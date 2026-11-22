@@ -1,7 +1,6 @@
 import { MoharApiError, type Reserve, type ReserveProof } from "@mohar/sdk";
 import { connection } from "next/server";
-import { AppHeader } from "@/components/AppHeader";
-import { Seal } from "@/components/Seal";
+import { BackHeader, Chip, Panel, RoundIcon, Rows, SectionTitle } from "@/components/kit";
 import { grams, shortHash, when } from "@/lib/format";
 import { getMohar } from "@/lib/mohar";
 import { requireCustomer, withWallet } from "@/lib/session";
@@ -22,62 +21,123 @@ export default async function Verify() {
     orNull<Reserve>(getMohar().getReserve()),
     withWallet(customer, (walletId) => orNull<ReserveProof>(getMohar().getReserveProof(walletId))),
   ]);
+  const vault = reserve ? Number(reserve.totalGramsInVault) : 0;
+  const owned = reserve ? Number(reserve.tokenSupplyGrams) : 0;
+  const backing = owned > 0 ? (vault / owned) * 100 : 100;
 
   return (
     <>
-      <AppHeader customer={customer} title="Your gold in the vault" backHref="/" />
-      <section className="space-y-5 p-5">
-        <div className="gold-card flex items-center gap-4 rounded-3xl p-5">
-          <Seal size={64} />
-          <div>
-            {proof ? (
-              <>
-                <p className="font-display text-xl font-semibold">
-                  {proof.verifiedOnChain ? "Your gold is accounted for" : "Not yet verified"}
-                </p>
-                <p className="text-sm opacity-80">
-                  {grams(proof.grams)} held in your name
-                  {proof.verifiedOnChain ? ", confirmed on the public ledger" : ""}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="font-display text-xl font-semibold">Nothing to verify yet</p>
-                <p className="text-sm opacity-80">Buy some gold and check back here.</p>
-              </>
-            )}
+      <BackHeader title="Gold in the vault" backHref="/" />
+      <div className="flex flex-col gap-3.5 px-5 pt-2 pb-7">
+        <section
+          className={`rounded-[28px] px-5 pt-5 pb-[18px] ${proof?.verifiedOnChain ? "bg-sage" : "bg-sand"}`}
+        >
+          <div className="flex items-center gap-3">
+            <RoundIcon
+              name={proof?.verifiedOnChain ? "shield" : "clock"}
+              tone="bg-white/80 text-ok"
+              size={46}
+            />
+            <h2 className="font-display text-[23px] leading-[1.1] font-extrabold tracking-[-0.03em]">
+              {proof
+                ? proof.verifiedOnChain
+                  ? `Your ${grams(proof.grams)} is accounted for`
+                  : "Not yet verified"
+                : "Nothing to verify yet"}
+            </h2>
           </div>
-        </div>
+          <p className="mt-3 text-[14.5px] leading-normal text-[#33402f]">
+            {proof
+              ? proof.verifiedOnChain
+                ? "Every gram is allocated in your name and included in the vault's signed statement."
+                : "Your grams are allocated; the vault's next signed statement will include them."
+              : "Buy some gold and check back here."}
+          </p>
+          {proof?.verifiedOnChain && reserve ? (
+            <p className="mt-3">
+              <Chip tone="bg-white/80 text-ok">
+                Checked against the public ledger · {when(reserve.asOf)}
+              </Chip>
+            </p>
+          ) : null}
+        </section>
 
         {reserve ? (
-          <div className="space-y-3">
-            <h2 className="font-display text-lg font-semibold">The whole vault</h2>
-            <dl className="divide-y divide-line rounded-2xl border border-line text-sm">
-              <Row label="Gold in the vault" value={grams(reserve.totalGramsInVault)} />
-              <Row label="Gold owned by customers" value={grams(reserve.tokenSupplyGrams)} />
-              <Row
-                label="Fully backed"
-                value={reserve.fullyBacked ? "Yes" : "No — new purchases are paused"}
-                strong
+          <>
+            <SectionTitle>The whole vault</SectionTitle>
+            <div className="grid grid-cols-2 gap-2.5">
+              {[
+                ["Gold in the vault", grams(reserve.totalGramsInVault)],
+                ["Owned by customers", grams(reserve.tokenSupplyGrams)],
+              ].map(([k, v]) => (
+                <Panel key={k} className="px-4 py-3.5">
+                  <p className="text-[13px] text-ink-soft">{k}</p>
+                  <p className="mt-1.5 font-display text-[19px] font-extrabold tracking-[-0.02em]">
+                    {v}
+                  </p>
+                </Panel>
+              ))}
+            </div>
+            <Panel className="px-[18px] py-4">
+              <div className="flex justify-between text-[13px] font-bold">
+                <span>Backing</span>
+                <span className={reserve.fullyBacked ? "text-ok" : "text-danger"}>
+                  {backing.toFixed(2)}%
+                </span>
+              </div>
+              <div
+                role="meter"
+                aria-label="Backing"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.min(100, Math.round(backing))}
+                className={`mt-2 h-2.5 overflow-hidden rounded-[10px] ${reserve.fullyBacked ? "bg-ok-pale" : "bg-danger-pale"}`}
+              >
+                <span
+                  className={`block h-full rounded-[10px] ${reserve.fullyBacked ? "bg-ok" : "bg-danger"}`}
+                  style={{ width: `${Math.min(100, backing)}%` }}
+                />
+              </div>
+              <p className="mt-2 text-[12.5px] text-ink-soft">
+                {reserve.fullyBacked
+                  ? "New purchases stop automatically if this ever drops below 100%. Selling always stays open."
+                  : "Below 100%: new purchases are paused until the vault is reconciled. Selling stays open."}
+              </p>
+            </Panel>
+            <Panel className="px-[18px] py-1">
+              <Rows
+                items={[
+                  ["Attestation", `#${reserve.nonce}, signed by the vault`],
+                  ["Last checked", when(reserve.asOf)],
+                  [
+                    "Ledger record",
+                    reserve.explorerUrl ? (
+                      <a key="l" href={reserve.explorerUrl} className="font-bold underline">
+                        View on the explorer ↗
+                      </a>
+                    ) : (
+                      <span key="l" className="font-mono text-[13px]">
+                        {shortHash(reserve.allocationsRoot)}
+                      </span>
+                    ),
+                  ],
+                ]}
               />
-              <Row label="Last checked" value={when(reserve.asOf)} />
-              <Row label="Attestation" value={`#${reserve.nonce}`} />
-              <Row label="Ledger record" value={shortHash(reserve.allocationsRoot)} mono />
-            </dl>
-          </div>
+            </Panel>
+          </>
         ) : (
           <p className="text-ink-soft">
             The vault publishes its first attestation after the first purchase.
           </p>
         )}
 
-        <details className="rounded-2xl bg-paper p-4 text-sm">
-          <summary className="cursor-pointer font-semibold">How this check works</summary>
-          <div className="mt-3 space-y-2 text-ink-soft">
+        <details className="ring-line rounded-[20px] bg-surface px-[18px] py-3.5">
+          <summary className="cursor-pointer font-bold">How this check works</summary>
+          <div className="mt-2.5 space-y-2 text-sm leading-normal text-ink-soft">
             <p>
-              After every trade the vault signs a statement of all the gold it holds and who it
-              belongs to. That statement is published to a public ledger, where nobody — not the
-              bank, not the vault — can change it afterwards.
+              After every trade the vault signs its total and a fingerprint of every customer&apos;s
+              gold. That statement is published to a public ledger, where nobody (not the bank, not
+              the vault) can change it afterwards.
             </p>
             <p>
               Your share is one entry in it. The check above asks the ledger itself whether your
@@ -89,30 +149,7 @@ export default async function Verify() {
             </p>
           </div>
         </details>
-      </section>
+      </div>
     </>
-  );
-}
-
-function Row({
-  label,
-  value,
-  strong,
-  mono,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex justify-between gap-4 px-4 py-3">
-      <dt className="text-ink-soft">{label}</dt>
-      <dd
-        className={`${strong ? "font-semibold text-bank" : "font-medium"} ${mono ? "font-mono" : ""}`}
-      >
-        {value}
-      </dd>
-    </div>
   );
 }

@@ -1,27 +1,40 @@
 @import "tailwindcss";
 
 /*
- * Demo Bank — a Pakistani retail bank's app with a Gold Savings feature powered (invisibly)
- * by MOHAR. Bank green and struck-gold, on a cool paper white; one bold element per screen:
- * the gold card with its hallmark seal.
+ * MOHAR Bank and MOHAR Wallet: one kit, taken from the MOHAR website and the design canvas
+ * (Components board). Off-white page, ink type, the orange seal, and one decorative element per
+ * screen: the gold card. A partner changes only its primary colour, the text on it and the hero
+ * tint (src/lib/partner.ts, set on <html> by the layout); everything else is shared.
  */
 @theme {
-  --color-ink: #12261e;
-  --color-ink-soft: #4a5d55;
-  --color-paper: #f3f6f2;
+  --color-page: #faf8f5;
   --color-surface: #ffffff;
-  --color-line: #d5ded8;
-  --color-bank: #0e5a43;
-  --color-bank-deep: #0a4433;
-  --color-gold: #b8892b;
-  --color-gold-deep: #7a5a17;
-  --color-gold-pale: #efe2bd;
+  --color-ink: #111110;
+  --color-ink-soft: #5d5850;
+  --color-ink-faint: #8a847a;
+  --color-line: #e6e1d8;
+  --color-seal: #ff6a13;
+  --color-ok: #1d7a4c;
+  --color-ok-pale: #e3f1e8;
   --color-danger: #a8261d;
-  --color-danger-pale: #f7e3e1;
+  --color-danger-pale: #f7e0d8;
+  --color-sand: #efe4d1;
+  --color-apricot: #f6dcc7;
+  --color-sage: #e1ead9;
+  --color-sky: #dce7f0;
+  --color-stone: #e8e3d9;
+  --color-hook: #fbf1d6;
+  --color-gold-text: #2a1c05;
 
-  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Public Sans Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* The partner's three colours; the layout overrides them per partner. */
+  --color-primary: #111110;
+  --color-on-primary: #ffffff;
+  --color-hero: #efe4d1;
+
+  --font-display: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Instrument Sans Variable", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mark: "DM Serif Display", Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 html {
@@ -29,23 +42,32 @@ html {
 }
 
 body {
-  background: var(--color-paper);
+  background: var(--color-page);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
 }
 
 :focus-visible {
-  outline: 3px solid var(--color-gold);
+  outline: 3px solid var(--color-seal);
   outline-offset: 2px;
 }
 
-/* The gold card: a struck-metal surface, the one decorative moment in the app. */
+/* The gold card: struck metal, the one decorative moment on a screen. Same at every partner. */
 .gold-card {
-  background:
-    radial-gradient(120% 140% at 0% 0%, #f6e8bd 0%, transparent 55%),
-    linear-gradient(135deg, #d9b25a 0%, #b8892b 48%, #9b7120 100%);
-  color: #2c1f05;
+  background: linear-gradient(150deg, #f8e3a6 0%, #e2b552 48%, #b8862a 100%);
+  color: var(--color-gold-text);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 24px 40px -28px rgba(120, 80, 10, 0.7);
+}
+
+/* A thin inner border that does not change the box size (the kit draws every outline this way). */
+.ring-line {
+  box-shadow: inset 0 0 0 1px var(--color-line);
+}
+.ring-line-strong {
+  box-shadow: inset 0 0 0 1.5px var(--color-line);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -56,6 +78,15 @@ body {
     from {
       transform: translateY(6px);
       opacity: 0;
+    }
+  }
+  .pulse-seal {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      transform: scale(0.92);
+      opacity: 0.7;
     }
   }
 }

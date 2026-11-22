@@ -159,14 +159,26 @@ export async function quoteBuy(formData: FormData): Promise<void> {
 
 export async function quoteSell(formData: FormData): Promise<void> {
   const customer = await requireCustomer();
-  const amount = lastValue(formData, "grams");
-  if (!GRAMS.test(amount) || Number(amount) <= 0) {
-    back("/sell", new Error("Enter how many grams to sell, for example 0.25."));
+  // "Sell all" sends the exact balance; otherwise grams, or rupees to receive (the pad's switch).
+  const all = lastValue(formData, "sellAll");
+  const gramsAmount = all || lastValue(formData, "grams");
+  const pkrAmount = all ? "" : lastValue(formData, "amountPkr");
+  let request: { grams: string } | { amountPkr: string };
+  if (gramsAmount) {
+    if (!GRAMS.test(gramsAmount) || Number(gramsAmount) <= 0) {
+      back("/sell", new Error("Enter how many grams to sell, for example 0.25."));
+    }
+    request = { grams: gramsAmount };
+  } else {
+    if (!PKR.test(pkrAmount) || Number(pkrAmount) < 100) {
+      back("/sell", new Error("Enter at least Rs 100 to sell, or switch to grams."));
+    }
+    request = { amountPkr: pkrAmount };
   }
   let quoteId: string;
   try {
     const quote = await withWallet(customer, (walletId) =>
-      getMohar().createQuote({ walletId, side: "sell", grams: amount }),
+      getMohar().createQuote({ walletId, side: "sell", ...request }),
     );
     rememberQuote(quote, customer.id);
     quoteId = quote.id;

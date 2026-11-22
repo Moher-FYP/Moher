@@ -1,6 +1,7 @@
-import "@fontsource-variable/bricolage-grotesque";
-import "@fontsource-variable/public-sans";
-import type { Metadata } from "next";
+import "@fontsource-variable/archivo";
+import "@fontsource-variable/instrument-sans";
+import "@fontsource/dm-serif-display";
+import type { Metadata, Viewport } from "next";
 import type { CSSProperties } from "react";
 import { DevPanel } from "@/components/DevPanel";
 import { partner } from "@/lib/partner";
@@ -13,15 +14,22 @@ export function generateMetadata(): Metadata {
   };
 }
 
+export const viewport: Viewport = { themeColor: "#faf8f5" };
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   const { colors, name } = partner();
-  // The partner's colours override the theme's; everything else is shared.
-  const theme = { "--color-bank": colors.main, "--color-bank-deep": colors.deep } as CSSProperties;
+  // The partner's three colours override the kit's; everything else is shared.
+  const theme = {
+    "--color-primary": colors.primary,
+    "--color-on-primary": colors.onPrimary,
+    "--color-hero": colors.hero,
+  } as CSSProperties;
   return (
     <html lang="en" className="h-full antialiased" style={theme}>
       <body className="min-h-full">
-        <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start lg:gap-10 lg:py-10">
-          <main className="w-full shrink-0 overflow-hidden rounded-[28px] border border-line bg-surface shadow-[0_1px_0_#d5ded8,0_24px_48px_-32px_rgba(18,38,30,0.35)] lg:sticky lg:top-10 lg:w-[400px] print:mx-auto print:border-0 print:shadow-none">
+        <div className="mx-auto flex min-h-screen max-w-[1440px] flex-col lg:flex-row lg:items-start lg:gap-14 lg:px-14 lg:py-12">
+          {/* On a phone the app fills the screen; on a laptop it sits in a phone-sized frame. */}
+          <main className="relative flex min-h-screen w-full shrink-0 flex-col bg-page lg:sticky lg:top-12 lg:min-h-[844px] lg:w-[390px] lg:overflow-hidden lg:rounded-[36px] lg:shadow-[inset_0_0_0_1px_var(--color-line),0_30px_60px_-40px_rgba(40,30,10,0.45)] print:static print:min-h-0 print:w-full print:shadow-none">
             {children}
           </main>
           <DevPanel partnerName={name} />

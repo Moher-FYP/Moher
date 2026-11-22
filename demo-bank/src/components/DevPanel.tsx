@@ -38,7 +38,25 @@ export function DevPanel({ partnerName }: { partnerName: string }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [pending, startTransition] = useTransition();
   const [priceError, setPriceError] = useState<string>();
+  const [price, setPrice] = useState<{ xauUsd: string }>();
+  const [open, setOpen] = useState<number>();
   const router = useRouter();
+
+  const loadPrice = async () => setPrice(await fetchPrice());
+
+  useEffect(() => {
+    let stopped = false;
+    const tick = async () => {
+      const latest = await fetchPrice();
+      if (!stopped) setPrice(latest);
+    };
+    void tick();
+    const timer = setInterval(tick, 10000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     let stopped = false;
@@ -66,6 +84,7 @@ export function DevPanel({ partnerName }: { partnerName: string }) {
       try {
         const refused = await moveGoldPrice(form);
         if (refused) setPriceError(refused);
+        await loadPrice();
         router.refresh();
       } catch {
         setPriceError("Could not reach MOHAR to change the price.");
@@ -73,64 +92,107 @@ export function DevPanel({ partnerName }: { partnerName: string }) {
     });
   };
 
+  const usd = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
   return (
-    <aside aria-labelledby="behind" className="min-w-0 flex-1 space-y-5 print:hidden">
-      <div>
-        <h2 id="behind" className="font-display text-2xl font-semibold">
-          Behind the scenes
-        </h2>
-        <p className="mt-1 max-w-prose text-ink-soft">
-          The customer only ever sees {partnerName}. Underneath, its server calls MOHAR through the
-          SDK, and MOHAR answers with signed webhooks. Everything appears here as it happens.
-        </p>
-      </div>
+    <aside
+      aria-labelledby="behind"
+      className="min-w-0 flex-1 px-5 py-10 lg:px-0 lg:py-0 print:hidden"
+    >
+      <p className="inline-block rounded-full bg-sand px-3 py-1.5 text-[13px] font-bold">
+        For evaluators · not part of the customer app
+      </p>
+      <h2
+        id="behind"
+        className="mt-3 font-display text-[38px] leading-none font-extrabold tracking-[-0.035em]"
+      >
+        Behind the scenes
+      </h2>
+      <p className="mt-3 max-w-[58ch] text-[17px] leading-normal text-ink-soft">
+        The customer only sees {partnerName}. Underneath, its server calls the MOHAR API through the
+        SDK, and MOHAR replies with signed webhooks. Each call appears here as it happens.
+      </p>
 
       <section
         aria-labelledby="price-controls"
-        className="rounded-2xl border border-line bg-surface p-4"
+        className="ring-line mt-6 rounded-[26px] bg-surface px-[22px] py-5"
       >
-        <h3 id="price-controls" className="font-semibold">
-          Move the gold price
-        </h3>
-        <p className="mt-1 text-sm text-ink-soft">
-          Get a price in the app, move the market by 1%, then confirm. MOHAR&apos;s contract cancels
-          any trade that moved more than 0.5% — nothing is charged.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {(
-            [
-              ["up", "Gold up 1%"],
-              ["down", "Gold down 1%"],
-              ["reset", "Reset price"],
-            ] as const
-          ).map(([direction, label]) => (
-            <button
-              key={direction}
-              type="button"
-              disabled={pending}
-              onClick={() => move(direction)}
-              className="rounded-full border border-line px-3 py-1.5 text-sm font-semibold hover:border-bank disabled:opacity-50"
-            >
-              {label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h3
+            id="price-controls"
+            className="font-display text-xl font-extrabold tracking-[-0.02em]"
+          >
+            Price-band demo
+          </h3>
+          {price ? (
+            <span className="rounded-full bg-sand px-3 py-1.5 text-[13px] font-bold">
+              Gold US$ {usd.format(Number(price.xauUsd))} / oz
+            </span>
+          ) : null}
         </div>
-        {priceError ? <p className="mt-2 text-sm text-danger">{priceError}</p> : null}
+        <p className="mt-1.5 max-w-[60ch] text-[15px] leading-normal text-ink-soft">
+          Get a price in the app, move gold by 1%, then confirm. The contract cancels any trade that
+          moved more than 0.5%, and nothing is charged.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => move("up")}
+            className="h-11 rounded-full bg-ink px-[18px] text-[15px] font-bold text-white hover:bg-ink-soft disabled:opacity-50"
+          >
+            Gold up 1%
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => move("down")}
+            className="ring-line-strong h-11 rounded-full bg-surface px-[18px] text-[15px] font-bold hover:bg-page disabled:opacity-50"
+          >
+            Gold down 1%
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => move("reset")}
+            className="px-3 text-[15px] font-bold underline underline-offset-2 disabled:opacity-50"
+          >
+            Reset price
+          </button>
+        </div>
+        {priceError ? (
+          <p role="alert" className="mt-3 text-sm text-danger">
+            {priceError}
+          </p>
+        ) : null}
       </section>
 
-      <section aria-labelledby="log" className="space-y-2">
-        <h3 id="log" className="font-semibold">
-          SDK calls and webhooks, newest first
-        </h3>
+      <section aria-labelledby="log" className="mt-7">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h3 id="log" className="font-display text-xl font-extrabold tracking-[-0.02em]">
+            SDK calls and webhooks
+          </h3>
+          <p className="text-[13px] text-ink-soft">
+            Newest first · open a call to see its request and response
+          </p>
+        </div>
         {entries.length === 0 ? (
-          <p className="text-sm text-ink-soft">Nothing yet. Sign in to the bank to start.</p>
+          <p className="text-sm text-ink-soft">Nothing yet. Sign in to the app to start.</p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="flex flex-col gap-2">
             {entries.map((entry) =>
               entry.kind === "call" ? (
-                <CallRow key={entry.id} call={entry} />
+                <CallRow
+                  key={entry.id}
+                  call={entry}
+                  open={open === entry.id}
+                  onToggle={(isOpen) => setOpen(isOpen ? entry.id : undefined)}
+                />
               ) : (
-                <WebhookRow key={entry.id} hook={entry} />
+                <WebhookRow key={entry.id} hook={entry} partnerName={partnerName} />
               ),
             )}
           </ul>
@@ -140,19 +202,39 @@ export function DevPanel({ partnerName }: { partnerName: string }) {
   );
 }
 
-function CallRow({ call }: { call: SdkCall }) {
+async function fetchPrice(): Promise<{ xauUsd: string } | undefined> {
+  try {
+    const response = await fetch("/api/dev/price", { cache: "no-store" });
+    return response.ok ? ((await response.json()) as { xauUsd: string }) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function CallRow({
+  call,
+  open,
+  onToggle,
+}: {
+  call: SdkCall;
+  open: boolean;
+  onToggle: (open: boolean) => void;
+}) {
   const ok = call.status !== null && call.status < 400;
   return (
-    <li className="rounded-xl border border-line bg-surface text-sm">
-      <details>
-        <summary className="flex cursor-pointer items-center gap-3 px-3 py-2">
-          <span className="w-11 shrink-0 font-mono text-xs font-semibold text-ink-soft">
+    <li
+      className={`overflow-hidden rounded-[14px] bg-surface text-sm ${open ? "border-[1.5px] border-ink" : "ring-line"}`}
+    >
+      {/* Controlled, so the open call stays open while the list refreshes every 1.5 s. */}
+      <details open={open} onToggle={(e) => onToggle(e.currentTarget.open)}>
+        <summary className="flex cursor-pointer list-none items-center gap-3 px-3.5 py-3 [&::-webkit-details-marker]:hidden">
+          <span className="w-12 shrink-0 font-mono text-xs font-bold text-ink-soft">
             {call.method}
           </span>
-          <span className="min-w-0 flex-1 truncate font-mono text-xs">{call.path}</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-[13px]">{call.path}</span>
           <span
-            className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-xs font-semibold ${
-              ok ? "bg-bank/10 text-bank" : "bg-danger-pale text-danger"
+            className={`shrink-0 rounded-full px-2.5 py-0.5 font-mono text-xs font-bold ${
+              ok ? "bg-ok-pale text-ok" : "bg-danger-pale text-danger"
             }`}
           >
             {call.status ?? "ERR"}
@@ -161,7 +243,9 @@ function CallRow({ call }: { call: SdkCall }) {
             {call.ms} ms
           </span>
         </summary>
-        <div className="grid gap-2 border-t border-line p-3 lg:grid-cols-2">
+        <div
+          className={`grid gap-px border-t border-line bg-line ${call.request !== undefined ? "lg:grid-cols-2" : ""}`}
+        >
           {call.request !== undefined ? <Json label="Request" value={call.request} /> : null}
           <Json label="Response" value={call.response} />
         </div>
@@ -170,21 +254,21 @@ function CallRow({ call }: { call: SdkCall }) {
   );
 }
 
-function WebhookRow({ hook }: { hook: WebhookReceived }) {
+function WebhookRow({ hook, partnerName }: { hook: WebhookReceived; partnerName: string }) {
   return (
     <li
-      className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${
-        hook.verified ? "bg-gold-pale/60" : "bg-danger-pale text-danger"
+      className={`flex items-center gap-3 rounded-[14px] px-3.5 py-3 text-sm ${
+        hook.verified ? "bg-hook" : "bg-danger-pale text-danger"
       }`}
     >
-      <span className="w-11 shrink-0 font-mono text-xs font-semibold">HOOK</span>
+      <span className="w-12 shrink-0 font-mono text-xs font-bold">HOOK</span>
       <span className="min-w-0 flex-1 truncate">
         {hook.verified
-          ? `MOHAR → bank: ${hook.type} for ${hook.transactionId}`
+          ? `MOHAR → ${partnerName}: ${hook.type} for ${hook.transactionId}`
           : `Rejected a webhook: ${hook.reason ?? "bad signature"}`}
       </span>
       {hook.verified ? (
-        <span className="shrink-0 text-xs font-semibold text-gold-deep">signature verified</span>
+        <span className="shrink-0 text-xs font-bold text-[#6b4a06]">signature verified</span>
       ) : null}
     </li>
   );
@@ -192,9 +276,9 @@ function WebhookRow({ hook }: { hook: WebhookReceived }) {
 
 function Json({ label, value }: { label: string; value: unknown }) {
   return (
-    <div className="min-w-0">
-      <p className="mb-1 text-xs font-semibold text-ink-soft">{label}</p>
-      <pre className="max-h-64 overflow-auto rounded-lg bg-ink p-3 font-mono text-xs leading-relaxed text-[#d9e6df]">
+    <div className="min-w-0 bg-page px-3.5 py-3">
+      <p className="mb-1.5 text-xs font-bold text-ink-soft">{label}</p>
+      <pre className="max-h-72 overflow-auto font-mono text-xs leading-[1.55] whitespace-pre-wrap [overflow-wrap:anywhere]">
         {JSON.stringify(value, null, 2)}
       </pre>
     </div>

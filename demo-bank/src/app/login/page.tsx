@@ -1,60 +1,74 @@
 import Link from "next/link";
 import { signIn } from "@/app/actions";
-import { FormError, quietButton } from "@/components/ui";
+import {
+  Actions,
+  Chip,
+  FormError,
+  Icon,
+  TrustRow,
+  Wordmark,
+  primaryButton,
+} from "@/components/kit";
 import { allCustomers } from "@/lib/customers";
+import { initials } from "@/lib/format";
 import { partner } from "@/lib/partner";
+
+const AVATAR_TONES = ["bg-sand", "bg-apricot", "bg-sky", "bg-sage"];
 
 export default async function Login({ searchParams }: PageProps<"/login">) {
   const { error } = await searchParams;
   const p = partner();
   return (
     <>
-      <header className="bg-bank px-6 pt-10 pb-8 text-white">
-        <span
-          aria-hidden="true"
-          className="grid size-10 place-items-center rounded-xl bg-white font-display font-bold text-bank"
-        >
-          {p.initials}
-        </span>
-        <h1 className="mt-6 font-display text-3xl font-semibold">{p.name}</h1>
-        <p className="mt-2 text-white/80">{p.description}.</p>
-        <p className="mt-3 inline-block rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
-          Demo partner · gold by MOHAR
+      <section className="mx-4 mt-3 rounded-[32px] bg-hero px-6 pt-[26px] pb-6">
+        <Wordmark word={p.word} size={28} />
+        <h1 className="mt-7 font-display text-[36px] leading-[1.02] font-extrabold tracking-[-0.035em]">
+          Save in real gold, from Rs&nbsp;{p.fromPkr.toLocaleString("en-PK")}
+        </h1>
+        <p className="mt-3 text-[15px] text-ink-soft">{p.tagline}.</p>
+        <p className="mt-4">
+          <Chip tone="bg-white/70 text-ink">Demo app · gold provided by MOHAR</Chip>
         </p>
-      </header>
-      <div className="space-y-3 p-5">
+      </section>
+
+      <div className="flex flex-col gap-2.5 px-5 pt-5">
         <FormError message={typeof error === "string" ? error : undefined} />
-        <Link href="/signup" className={quietButton}>
-          Open a new account
-        </Link>
-        <form action={signIn} className="space-y-3 pt-2">
-          <p className="text-sm font-semibold text-ink-soft">Or sign in as a demo customer</p>
-          {allCustomers().map((customer) => (
+        <TrustRow />
+        <p className="mt-2 text-sm font-bold text-ink-soft">Continue as a demo customer</p>
+        <form action={signIn} className="flex flex-col gap-2.5">
+          {allCustomers().map((customer, i) => (
             <button
               key={customer.id}
               type="submit"
               name="customer"
               value={customer.id}
-              className="flex w-full items-center gap-4 rounded-2xl border border-line p-4 text-left hover:border-bank hover:bg-paper"
+              className="ring-line flex w-full items-center gap-3.5 rounded-[20px] bg-surface px-3.5 py-3 text-left hover:bg-page"
             >
               <span
                 aria-hidden="true"
-                className="grid size-11 shrink-0 place-items-center rounded-full bg-gold-pale font-display font-semibold text-gold-deep"
+                className={`grid size-[42px] shrink-0 place-items-center rounded-full font-display text-sm font-extrabold ${AVATAR_TONES[i % AVATAR_TONES.length]}`}
               >
-                {customer.firstName[0]}
+                {initials(customer.name)}
               </span>
-              <span>
-                <span className="block font-semibold">{customer.name}</span>
-                <span className="text-sm text-ink-soft">{customer.description}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold">{customer.name}</span>
+                <span className="block text-[13px] leading-[1.35] text-ink-soft">
+                  {customer.onboarding?.outcome === "referred"
+                    ? "Application under review"
+                    : customer.description}
+                </span>
               </span>
+              <Icon name="chev" size={18} className="text-ink-soft" />
             </button>
           ))}
         </form>
-        <p className="pt-2 text-center text-sm text-ink-soft">
-          No password: this is a demo. A real {p.kind} verifies its customers before Gold Savings
-          opens.
-        </p>
       </div>
+
+      <Actions note={`Demo only: no password. A real ${p.kind} verifies you first.`}>
+        <Link href="/signup" className={primaryButton}>
+          Open a new account
+        </Link>
+      </Actions>
     </>
   );
 }
