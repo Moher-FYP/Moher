@@ -5,18 +5,18 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --disable-warning=ExperimentalWarning src/index.ts",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/index.js",
+    "start": "node --disable-warning=ExperimentalWarning dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "abi": "node scripts/extract-abis.mjs",
-    "portal:user": "tsx src/portal/cli.ts",
-    "simulate": "tsx src/sim/cli.ts"
+    "portal:user": "tsx --disable-warning=ExperimentalWarning src/portal/cli.ts",
+    "simulate": "tsx --disable-warning=ExperimentalWarning src/sim/cli.ts"
   },
   "dependencies": {
     "@mohar/sdk": "workspace:*",
@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
-    "@types/node": "^20.19.43",
+    "@types/node": "^24.19.2",
     "@types/qrcode": "^1.5.6",
     "@types/supertest": "^7.2.1",
     "playwright": "1.63.0",

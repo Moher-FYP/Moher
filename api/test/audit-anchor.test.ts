@@ -54,7 +54,14 @@ describe("audit log anchors", () => {
     for (const e of store.rawLog("audit")) {
       forged.log("audit", { action: e.seq === 2 ? "something else" : e.action, result: e.result });
     }
-    store.rawLog("audit").splice(0, Infinity, ...forged.rawLog("audit"));
+    store.unsafeSqlForTests("DELETE FROM log_entries WHERE log = 'audit'");
+    for (const e of forged.rawLog("audit")) {
+      store.unsafeSqlForTests(
+        "INSERT INTO log_entries (log, seq, partner, data) VALUES ('audit', ?, NULL, ?)",
+        e.seq,
+        JSON.stringify(e),
+      );
+    }
     expect(store.verifyLog("audit").intact).toBe(true);
 
     const check = await anchor.verify();
@@ -68,7 +75,10 @@ describe("audit log anchors", () => {
     const anchor = new AuditAnchor(store, signer);
     logs(store, 2);
     await anchor.anchorNow();
-    store.anchors()[0]!.audit.hash = "f".repeat(64);
+    store.unsafeSqlForTests(
+      "UPDATE anchors SET data = json_set(data, '$.audit.hash', ?) WHERE ord = 1",
+      "f".repeat(64),
+    );
     expect((await anchor.verify()).problem).toMatch(/does not say what the file records/);
   });
 

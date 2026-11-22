@@ -31,7 +31,7 @@ export function portalKeyLookup(store: PortalStore, now: () => Date = () => new 
     const record = store.findLiveKeyByHash(keyHash(key));
     if (!record) return undefined;
     // In memory only: saved with the next real write, not on every request.
-    store.updateApiKey(record.id, { lastUsedAt: now().toISOString() }, false);
+    store.updateApiKey(record.id, { lastUsedAt: now().toISOString() });
     return record.partnerSlug;
   };
 }

@@ -19,8 +19,8 @@ code with an authenticator app (Microsoft Authenticator: + → Other account; Go
 Authenticator or Bitwarden Authenticator: + → Scan a QR code), save the password in the password
 manager, then sign in with the email, the password and the app's 6-digit code. If scanning
 fails, enter the setup key by hand instead. Never paste the key, the QR code or the password
-into chat or a document; if one leaks, `portal:user reset` replaces both. Run `portal:user` with the API
-stopped. Against Amoy, prefix both API commands with `DOTENV_CONFIG_PATH=.env.amoy`.
+into chat or a document; if one leaks, `portal:user reset` replaces both. `portal:user` works
+while the API runs: both use the same SQLite database. Against Amoy, prefix both API commands with `DOTENV_CONFIG_PATH=.env.amoy`.
 
 `MOHAR_API_URL` (default `http://127.0.0.1:4000`) says where the API is; `.env.example` has it.
 
@@ -58,10 +58,9 @@ one for a separate demonstration partner whose slug starts `sim-`, and the pages
 "Simulated history" banner whenever they read it:
 
 ```bash
-# Anvil and the contracts running, the API started once and then stopped
+# Anvil and the contracts running (the API may be running too)
 pnpm --filter @mohar/api simulate --partner sim-bank                    # 200 savers, 90 days, seed 1
 pnpm --filter @mohar/api portal:user add --email you@sim-bank.test --role viewer --partner sim-bank
-pnpm --filter @mohar/api dev
 ```
 
 Simulated records never mix with real ones: `docs/api.md` says how.

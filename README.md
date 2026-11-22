@@ -67,7 +67,7 @@ Open http://localhost:3000, sign in as Hassan, and buy some gold. The panel on t
 every call the partner makes to MOHAR. `demo-bank/README.md` explains the screens and the
 slippage demo.
 
-The partner portal needs a user first (with the API stopped):
+The partner portal needs a user first (the API may keep running):
 `pnpm --filter @mohar/api portal:user add --email dev@demo-bank.test --role developer --partner demo-bank`.
 `portal/README.md` explains the rest, including demo data for its analytics pages
 (`pnpm --filter @mohar/api simulate --partner sim-bank`).

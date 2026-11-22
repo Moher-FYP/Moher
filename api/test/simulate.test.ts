@@ -112,7 +112,14 @@ describe("store: simulated and real records never mix", () => {
     store.addSimulated(history);
     expect(store.walletsOf("sim-bank")).toHaveLength(history.wallets.length);
 
-    const real = { ...history.wallets[0]!, id: "wal_real", simulated: undefined };
+    // A real wallet of its own (the database refuses two wallets with one address or customer).
+    const real = {
+      ...history.wallets[0]!,
+      id: "wal_real",
+      externalCustomerId: "REAL-0001",
+      address: `0x${"1".repeat(40)}` as const,
+      simulated: undefined,
+    };
     store.saveWallet(real);
     expect(() => store.addSimulated(simulateHistory(options({ savers: 5, seed: 2 })))).toThrow(
       /real records/,
