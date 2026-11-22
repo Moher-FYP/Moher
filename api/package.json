@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "abi": "node scripts/extract-abis.mjs",
-    "portal:user": "tsx src/portal/cli.ts"
+    "portal:user": "tsx src/portal/cli.ts",
+    "simulate": "tsx src/sim/cli.ts"
   },
   "dependencies": {
     "@mohar/sdk": "workspace:*",

@@ -54,7 +54,7 @@ export default function CustomersPage() {
               setKyc(e.target.value as KycLevel | "");
               setCursor(undefined);
             }}
-            className={`${inputClass} w-44`}
+            className={`${inputClass.replace("w-full", "")} w-44`}
           >
             <option value="">All KYC levels</option>
             <option value="asaan">Asaan</option>

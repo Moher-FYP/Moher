@@ -120,6 +120,43 @@ servers. They are described in `docs/portal-openapi.yaml` and live in `src/porta
 | Log anchors     | `src/portal/anchor.ts`       | Once a day (`AUDIT_ANCHOR_HOURS`) and on demand, the logs' latest seq and hash go on-chain in a self-transaction from the compliance key. `GET /portal/v1/audit/verify` checks the log against every anchor, so even a log rewritten in full is caught.                                                                     |
 | Logs            | `src/portal/portal-store.ts` | An audit log (changes, exports) and a security log (sign-ins, refusals), each hash-chained; `GET /portal/v1/audit/verify` recomputes both.                                                                                                                                                                                  |
 
+### Analytics
+
+`GET /portal/v1/analytics?days=7|30|90&until=YYYY-MM-DD` gives the Overview and Trading pages
+everything they draw, computed on request from the store by `src/domain/analytics.ts` (a pure
+function, tested in `test/analytics.test.ts`). The choices worth defending:
+
+- **Days are Pakistan days** (UTC+05:00). A period is `days` whole days ending `until`
+  (default today); the previous period is the same length just before it, so every figure has a
+  like-for-like comparison.
+- **Custody is rebuilt from confirmed trades**, not read from the chain, so it can be shown for
+  any past day. A buy adds grams, a sale removes them, and a transfer counts only when it crosses
+  between partners.
+- **The bridge adds up exactly.** Closing value = opening + bought − sold + transferred in −
+  transferred out + price effect. Trades are valued at their own quote; the price effect is what
+  is left, which is the change in the value of gold already held.
+- **Prices** for past days are the last quote of that day (any partner), carried forward; today
+  uses the live price.
+- **Medians, not averages**, for buy size and settlement time (nearest-rank percentiles), because
+  a few large buys or one slow block would drag an average.
+- **Price-band cancellations** are failed trades with code `price_moved` (the contract's 50 bps
+  check), over trades that finished.
+
+### Simulated history
+
+`pnpm --filter @mohar/api simulate --partner sim-bank [--savers 200 --days 90 --seed 1]`
+(`src/sim/`) writes a demonstration partner's history so the portal has something to show. It
+models four kinds of saver (habit, occasional, large, dormant), a gold price that moves like a
+random walk with 18% yearly volatility and ends at the live price, quotes that expire or fail
+the price band more often on volatile days, and settlement times around 2.4 s. The same seed
+always gives the same history.
+
+It cannot be confused with real data: it runs only against chain 31337 with the API stopped;
+the partner's slug must start `sim-`; every record carries `simulated: true`; the store refuses
+simulated records for a partner that has real ones, and real ones are never cleared; and a
+`sim-` partner's portal users can only be viewers. The analytics say `simulated: true`, and the
+portal shows a banner.
+
 A MOHAR operator adds, unlocks, locks and resets portal users on the portal's operator page
 (`/portal/v1/admin/users`); a new or reset user's password and QR code are shown once. The very
 first operator is added from the terminal, with the API stopped (it would overwrite the file):

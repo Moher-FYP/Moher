@@ -51,3 +51,64 @@ export const TYPE_NAMES: Record<string, string> = {
   burn: "Sell",
   transfer: "Transfer",
 };
+
+/** Rupees for a chart axis or a tile: "Rs 4.2M", "Rs 950k", "Rs 12,400". Signed. */
+export function rupeesShort(value: number): string {
+  const sign = value < 0 ? "−" : "";
+  const v = Math.abs(value);
+  if (v >= 1e7) return `${sign}Rs ${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e6) return `${sign}Rs ${(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e4) return `${sign}Rs ${Math.round(v / 1e3).toLocaleString("en")}k`;
+  return `${sign}Rs ${Math.round(v).toLocaleString("en")}`;
+}
+
+/** Signed rupees from a decimal string, whole rupees: "−Rs 1,250". */
+export function rupeesSigned(value: string): string {
+  const negative = value.startsWith("-");
+  const text = rupees(negative ? value.slice(1) : value).replace(/\.\d+$/, "");
+  return negative ? `−${text}` : `+${text}`;
+}
+
+/** Signed grams from a decimal string: "+1.2500 g", "−0.0310 g". */
+export function gramsSigned(value: string, places = 4): string {
+  const negative = value.startsWith("-");
+  const text = grams(negative ? value.slice(1) : value, places);
+  return `${negative ? "−" : "+"}${text}`;
+}
+
+/** A share 0–1 as a percentage: "87.4%"; "—" when there was nothing to divide by. */
+export function share(value: number | null, places = 1): string {
+  return value === null ? "—" : `${(value * 100).toFixed(places)}%`;
+}
+
+/** Milliseconds as seconds: "2.4 s". */
+export function seconds(ms: number | null): string {
+  return ms === null ? "—" : `${(ms / 1000).toFixed(1)} s`;
+}
+
+/** "2026-11-20" -> "20 Nov" */
+export function day(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(Date.UTC(y!, m! - 1, d!));
+}
+
+/** Grams for a chart axis or tooltip: "1,234 g", "56.8 g", "0.412 g". Signed. */
+export function gramsShort(value: number): string {
+  const sign = value < 0 ? "−" : "";
+  const v = Math.abs(value);
+  if (v === 0) return "0 g";
+  const places = v >= 1000 ? 0 : v >= 10 ? 1 : v >= 0.1 ? 2 : 3;
+  return `${sign}${v.toLocaleString("en", { minimumFractionDigits: places, maximumFractionDigits: places })} g`;
+}
+
+/** Rupees in thousands for tight labels: 500 -> "500", 1000 -> "1k", 25000 -> "25k". */
+export function rupeesK(value: string | number): string {
+  const v = Number(value);
+  return v >= 1000
+    ? `${(v / 1000).toLocaleString("en", { maximumFractionDigits: 1 })}k`
+    : String(Math.round(v));
+}

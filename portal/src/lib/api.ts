@@ -93,6 +93,70 @@ export interface Overview {
   latestTransactions: Transaction[];
 }
 
+export interface Change<T> {
+  value: T;
+  previous: T;
+}
+
+export type AnalyticsDays = 7 | 30 | 90;
+
+export interface Analytics {
+  partner: string;
+  simulated: boolean;
+  period: { from: string; until: string; days: AnalyticsDays };
+  previousPeriod: { from: string; until: string };
+  pricePerGramPkr: string;
+  tiles: {
+    custodyGrams: Change<string>;
+    custodyPkr: Change<string>;
+    netFlowGrams: Change<string>;
+    activeSavers: Change<number>;
+    feesPkr: Change<string>;
+    volumePkr: Change<string>;
+    trades: Change<number>;
+    conversion: Change<number | null>;
+    bandCancellationRate: Change<number | null>;
+    medianTicketPkr: Change<string | null>;
+    settlementP50Ms: Change<number | null>;
+  };
+  reserve?: { backingRatio: number; asOf: string };
+  bridge: {
+    openingPkr: string;
+    boughtPkr: string;
+    soldPkr: string;
+    transferredInPkr: string;
+    transferredOutPkr: string;
+    priceEffectPkr: string;
+    closingPkr: string;
+  };
+  series: {
+    date: string;
+    boughtGrams: string;
+    soldGrams: string;
+    netGrams: string;
+    custodyGrams: string;
+    pricePerGramPkr: string;
+    trades: number;
+  }[];
+  funnel: {
+    quotes: number;
+    traded: number;
+    failed: number;
+    pending: number;
+    expired: number;
+    open: number;
+    failureReasons: { code: string; count: number }[];
+  };
+  settlement: { count: number; p50Ms: number | null; p95Ms: number | null; maxMs: number | null };
+  tickets: {
+    count: number;
+    medianPkr: string | null;
+    meanPkr: string | null;
+    bins: { label: string; minPkr: string; maxPkr?: string; count: number }[];
+  };
+  savers: { registered: number; funded: number; active: number; new: number };
+}
+
 export type KycLevel = "asaan" | "standard" | "enhanced";
 
 export interface Wallet {

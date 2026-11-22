@@ -100,6 +100,20 @@ export class Store {
     return this.state.quotes[id];
   }
 
+  /** One partner's quotes, oldest first. */
+  quotesOf(partnerSlug: string): QuoteRecord[] {
+    return Object.values(this.state.quotes)
+      .filter((q) => q.partnerSlug === partnerSlug)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  }
+
+  /** Every partner's quotes, oldest first: the record of prices over time. */
+  allQuotes(): QuoteRecord[] {
+    return Object.values(this.state.quotes).sort(
+      (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+    );
+  }
+
   // ---------------------------------------------------------------- transactions
 
   saveTransaction(txn: TransactionRecord): void {
@@ -141,6 +155,11 @@ export class Store {
       data,
       nextCursor: last && start + options.limit < all.length ? last.id : undefined,
     };
+  }
+
+  /** Every partner's transactions, unordered. A transfer between partners is in one list only. */
+  allTransactions(): TransactionRecord[] {
+    return Object.values(this.state.transactions);
   }
 
   /** One partner's transactions, newest first. */
@@ -200,6 +219,80 @@ export class Store {
   deleteIdempotency(key: string): void {
     delete this.state.idempotency[key];
     this.persist();
+  }
+
+  // ---------------------------------------------------------------- simulated history
+
+  /**
+   * Adds the history simulator's records (src/sim). Refuses a partner that has any real record,
+   * so simulated and real figures can never mix in one partner's analytics, and refuses any id
+   * or wallet address already in use, so a simulated record can never replace a real one. All
+   * checks run before anything is written: the store is changed in full or not at all.
+   */
+  addSimulated(records: {
+    wallets: WalletRecord[];
+    quotes: QuoteRecord[];
+    transactions: TransactionRecord[];
+  }): void {
+    const partners = new Set(
+      [...records.wallets, ...records.quotes, ...records.transactions].map((r) => r.partnerSlug),
+    );
+    for (const record of [...records.wallets, ...records.quotes, ...records.transactions]) {
+      if (!record.simulated) throw new Error(`Record ${record.id} is not marked simulated`);
+    }
+    const real = [
+      ...Object.values(this.state.wallets),
+      ...Object.values(this.state.quotes),
+      ...Object.values(this.state.transactions),
+    ].find((r) => partners.has(r.partnerSlug) && !r.simulated);
+    if (real) {
+      throw new Error(
+        `Partner "${real.partnerSlug}" already has real records (${real.id}); simulate into a partner of its own`,
+      );
+    }
+    const clash = (
+      kind: string,
+      batch: { id: string }[],
+      existing: Record<string, unknown>,
+    ): void => {
+      const seen = new Set<string>();
+      for (const { id } of batch) {
+        if (id in existing || seen.has(id))
+          throw new Error(`The ${kind} id ${id} is already in use`);
+        seen.add(id);
+      }
+    };
+    clash("wallet", records.wallets, this.state.wallets);
+    clash("quote", records.quotes, this.state.quotes);
+    clash("transaction", records.transactions, this.state.transactions);
+    const addresses = new Set(
+      Object.values(this.state.wallets).map((w) => w.address.toLowerCase()),
+    );
+    for (const w of records.wallets) {
+      const address = w.address.toLowerCase();
+      if (addresses.has(address))
+        throw new Error(`The wallet address ${w.address} is already in use`);
+      addresses.add(address);
+    }
+    for (const w of records.wallets) this.state.wallets[w.id] = w;
+    for (const q of records.quotes) this.state.quotes[q.id] = q;
+    for (const t of records.transactions) this.state.transactions[t.id] = t;
+    this.persist();
+  }
+
+  /** Removes a partner's simulated records (to simulate again). Real records are never touched. */
+  clearSimulated(partnerSlug: string): number {
+    let removed = 0;
+    for (const bucket of [this.state.wallets, this.state.quotes, this.state.transactions]) {
+      for (const [id, record] of Object.entries(bucket)) {
+        if (record.partnerSlug === partnerSlug && record.simulated) {
+          delete bucket[id];
+          removed += 1;
+        }
+      }
+    }
+    if (removed > 0) this.persist();
+    return removed;
   }
 
   // ---------------------------------------------------------------- persistence
