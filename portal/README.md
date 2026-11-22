@@ -88,7 +88,13 @@ see the person, not the portal. Behind a reverse proxy, that proxy must set the 
 
 ## Changing the look
 
-Every colour, the font and the corner radii are in `src/app/theme.css`. Pages and components
-use only those names (`bg-surface`, `text-ink-soft`, `border-line`, …), so the team's design
-system replaces that one file. Shared pieces (cards, tables, badges, buttons, fields) are in
+The portal uses the same kit as MOHAR Bank and MOHAR Wallet (the design canvas's Components
+board): off-white canvas, ink for structure and primary actions, the orange MOHAR seal for the
+mark and keyboard focus, gold for the second data series, Archivo for titles and figures,
+Instrument Sans for text and DM Serif Display for the wordmark (`src/components/Brand.tsx`).
+
+Every colour, font and corner radius is in `src/app/theme.css`. Pages and components use only
+those names (`bg-surface`, `text-ink-soft`, `border-line`, …), so a new design system replaces
+that one file. The tokens `navy` and `navy-deep` keep their first names so no page had to change;
+in this kit they are ink. Shared pieces (cards, tables, badges, buttons, fields) are in
 `src/components/ui.tsx`.

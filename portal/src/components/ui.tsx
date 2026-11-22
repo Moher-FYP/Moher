@@ -21,7 +21,9 @@ export function PageHeader({
   return (
     <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
+        <h1 className="font-display text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-ink">
+          {title}
+        </h1>
         {subtitle ? <p className="mt-1 text-sm text-ink-soft">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
@@ -44,7 +46,9 @@ export function Card({
     <section className={`rounded-[var(--radius-card)] border border-line bg-surface ${className}`}>
       {title ? (
         <div className="flex items-center justify-between border-b border-line px-5 py-3">
-          <h2 className="text-sm font-semibold text-ink">{title}</h2>
+          <h2 className="font-display text-[15px] font-extrabold tracking-[-0.01em] text-ink">
+            {title}
+          </h2>
           {action}
         </div>
       ) : null}
@@ -65,7 +69,9 @@ export function Stat({
   return (
     <div className="rounded-[var(--radius-card)] border border-line bg-surface p-5">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-ink">{value}</p>
+      <p className="mt-2 font-display text-2xl font-extrabold tracking-[-0.02em] text-ink">
+        {value}
+      </p>
       {note ? <p className="mt-1 text-xs text-ink-soft">{note}</p> : null}
     </div>
   );
@@ -88,7 +94,7 @@ export function Badge({
 }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONES[tone]}`}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${TONES[tone]}`}
     >
       {children}
     </span>
@@ -128,7 +134,7 @@ export function Button({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`rounded-[var(--radius-control)] px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${styles}`}
+      className={`rounded-full px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${styles}`}
     >
       {children}
     </button>
@@ -139,7 +145,7 @@ export function ButtonLink({ href, children }: { href: string; children: ReactNo
   return (
     <Link
       href={href}
-      className="rounded-[var(--radius-control)] border border-line bg-surface px-3.5 py-2 text-sm font-medium text-ink hover:bg-sunken"
+      className="rounded-full border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-sunken"
     >
       {children}
     </Link>

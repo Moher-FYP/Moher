@@ -263,7 +263,9 @@ function Settlement({ a }: { a: Analytics }) {
       {items.map((i) => (
         <div key={i.label}>
           <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">{i.label}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{i.value}</p>
+          <p className="mt-1 font-display text-2xl font-extrabold tracking-[-0.02em] tabular-nums text-ink">
+            {i.value}
+          </p>
           <p className="text-xs text-ink-soft">{i.note}</p>
         </div>
       ))}

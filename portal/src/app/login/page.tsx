@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
 import { Button, ErrorBox, Field, inputClass } from "@/components/ui";
 import { api, ApiError, type Me } from "@/lib/api";
+import { Wordmark } from "@/components/Brand";
 
 function SignIn() {
   const router = useRouter();
@@ -42,16 +43,16 @@ function SignIn() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex items-center gap-2.5">
-          <span aria-hidden className="h-7 w-7 rounded-[6px] bg-gold" />
-          <span className="text-lg font-bold tracking-tight text-navy">MOHAR</span>
-          <span className="text-sm text-ink-faint">Partner Portal</span>
+        <div className="mb-8">
+          <Wordmark size={28} />
         </div>
         <form
           onSubmit={(e) => void submit(e)}
           className="space-y-4 rounded-[var(--radius-card)] border border-line bg-surface p-6"
         >
-          <h1 className="text-xl font-semibold text-ink">Sign in</h1>
+          <h1 className="font-display text-2xl font-extrabold tracking-[-0.02em] text-ink">
+            Sign in
+          </h1>
           <Field label="Work email">
             <input
               name="email"

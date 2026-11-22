@@ -1,4 +1,6 @@
-import "@fontsource-variable/public-sans";
+import "@fontsource-variable/archivo";
+import "@fontsource-variable/instrument-sans";
+import "@fontsource/dm-serif-display";
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import "./globals.css";

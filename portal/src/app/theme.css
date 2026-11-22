@@ -1,43 +1,48 @@
 /*
- * The portal's design tokens: the ONE file to change when the team's design system arrives.
- * Pages and components use only these names (through Tailwind classes such as bg-surface,
- * text-ink-soft, border-line), never raw colours, so swapping this file restyles everything.
+ * The portal's design tokens: the ONE file to change when the design system changes. Pages and
+ * components use only these names (through Tailwind classes such as bg-surface, text-ink-soft,
+ * border-line), never raw colours, so swapping this file restyles everything.
  *
- * Until then it follows the FYP-1 report's portal mock-up (Figure 3.6): a white sidebar, navy
- * for structure and text, MOHAR gold only for the mark and for the one thing that matters on a
- * page, quiet green and amber for status.
+ * It follows the MOHAR kit shared with MOHAR Bank and MOHAR Wallet (design canvas, Components
+ * board): off-white canvas, ink for structure and text, the orange seal only for the mark and
+ * focus, gold for the second data series, quiet green, amber and red for status. The token
+ * names "navy" and "navy-deep" are kept from the first portal mock-up so no page had to change;
+ * in this kit they are ink.
  */
 @theme {
   /* Text */
-  --color-ink: #17203d;
-  --color-ink-soft: #5a6278;
-  --color-ink-faint: #8c93a6;
+  --color-ink: #111110;
+  --color-ink-soft: #5d5850;
+  --color-ink-faint: #8a847a;
 
   /* Surfaces */
-  --color-canvas: #f5f5f1;
+  --color-canvas: #faf8f5;
   --color-surface: #ffffff;
-  --color-sunken: #f0f1f4;
-  --color-line: #e2e4ea;
+  --color-sunken: #f3efe8;
+  --color-line: #e6e1d8;
 
-  /* Brand */
-  --color-navy: #1f2b5c;
-  --color-navy-deep: #141d42;
-  --color-gold: #c9962c;
-  --color-gold-pale: #f6ecd2;
+  /* Brand: ink for structure and primary actions, gold for data, seal orange for the mark */
+  --color-navy: #111110;
+  --color-navy-deep: #3a372f;
+  --color-gold: #c8962e;
+  --color-gold-pale: #efe4d1;
+  --color-seal: #ff6a13;
 
   /* Status */
-  --color-ok: #1f7a4d;
-  --color-ok-pale: #e3f3ea;
+  --color-ok: #1d7a4c;
+  --color-ok-pale: #e3f1e8;
   --color-warn: #9a6a07;
-  --color-warn-pale: #fbf0d6;
-  --color-bad: #b42318;
-  --color-bad-pale: #fbe7e5;
+  --color-warn-pale: #fbf1d6;
+  --color-bad: #a8261d;
+  --color-bad-pale: #f7e0d8;
 
-  /* Type */
-  --font-sans: "Public Sans Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Type: Archivo for titles and figures, Instrument Sans for text, DM Serif for the wordmark */
+  --font-display: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Instrument Sans Variable", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mark: "DM Serif Display", Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   /* Shape */
-  --radius-card: 14px;
-  --radius-control: 9px;
+  --radius-card: 22px;
+  --radius-control: 12px;
 }

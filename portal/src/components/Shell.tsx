@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, whenSignedOut, type Me, type Role } from "@/lib/api";
 import { when } from "@/lib/format";
+import { Wordmark } from "./Brand";
 
 const MeContext = createContext<Me | undefined>(undefined);
 
@@ -71,19 +72,18 @@ export function Shell({ children }: { children: ReactNode }) {
     <MeContext.Provider value={me}>
       <div className="flex min-h-screen">
         <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-line bg-surface">
-          <div className="flex items-center gap-2.5 px-5 py-5">
-            <span aria-hidden className="h-6 w-6 rounded-[5px] bg-gold" />
-            <span className="text-base font-bold tracking-tight text-navy">MOHAR</span>
-            <span className="text-xs text-ink-faint">Partner Portal</span>
+          <div className="px-5 py-6">
+            <Wordmark />
           </div>
           <nav className="flex-1 space-y-0.5 px-3">
             {items.map((item) => (
               <Link
                 key={item.label}
                 href={item.href}
-                className={`block rounded-[var(--radius-control)] px-3 py-2 text-sm ${
+                aria-current={active(item.href) ? "page" : undefined}
+                className={`block rounded-full px-3.5 py-2 text-sm ${
                   active(item.href)
-                    ? "bg-sunken font-semibold text-navy"
+                    ? "bg-ink font-semibold text-white"
                     : "text-ink-soft hover:bg-sunken hover:text-ink"
                 }`}
               >
@@ -102,7 +102,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <p className="mt-1 text-xs text-ink-faint">Session ends {when(me.sessionExpiresAt)}</p>
             <button
               onClick={() => void signOut()}
-              className="mt-3 text-xs font-medium text-navy hover:underline"
+              className="mt-3 text-xs font-semibold text-ink underline underline-offset-2"
             >
               Sign out
             </button>

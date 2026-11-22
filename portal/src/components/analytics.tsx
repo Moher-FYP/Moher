@@ -24,7 +24,7 @@ export function PeriodPicker({ value }: { value: AnalyticsDays }) {
     <div
       role="radiogroup"
       aria-label="Period"
-      className="inline-flex rounded-[var(--radius-control)] border border-line bg-surface p-0.5"
+      className="inline-flex rounded-full border border-line bg-surface p-1"
     >
       {PERIODS.map((d) => {
         const on = d === value;
@@ -39,7 +39,7 @@ export function PeriodPicker({ value }: { value: AnalyticsDays }) {
               next.set("days", String(d));
               router.replace(`${pathname}?${next.toString()}`, { scroll: false });
             }}
-            className={`rounded-[7px] px-3 py-1.5 text-sm font-medium transition ${
+            className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
               on ? "bg-navy text-white" : "text-ink-soft hover:text-ink"
             }`}
           >
@@ -154,7 +154,9 @@ export function Tile({
           </span>
         </span>
       </p>
-      <p className="mt-2 text-2xl font-semibold tabular-nums text-ink">{value}</p>
+      <p className="mt-2 font-display text-[26px] font-extrabold tracking-[-0.03em] tabular-nums text-ink">
+        {value}
+      </p>
       <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs">
         {change ? (
           <span className={`font-medium ${good}`}>
