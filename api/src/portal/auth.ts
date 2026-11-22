@@ -60,6 +60,15 @@ export class PortalAuth {
    * Checks email, password and one-time code together and answers the same way whichever was
    * wrong. Every outcome goes in the security log.
    */
+  /** The user's authenticator secret, or undefined if it was sealed under another key. */
+  private openSecret(user: PortalUserRecord): string | undefined {
+    try {
+      return this.sealer.open(user.totpSecretSealed);
+    } catch {
+      return undefined;
+    }
+  }
+
   async signIn(
     res: Response,
     input: { email: string; password: string; code: string },
@@ -101,12 +110,29 @@ export class PortalAuth {
     }
 
     const passwordOk = await verifyPassword(user.passwordHash, input.password);
-    const counter = verifyCode(
-      this.sealer.open(user.totpSecretSealed),
-      input.code,
-      Math.floor(this.now().getTime() / 1000),
-      user.totpLastCounter,
-    );
+    const secret = this.openSecret(user);
+    if (passwordOk && secret === undefined) {
+      // Sealed under another PORTAL_SECRET_KEY (an account made on Amoy, used on a local
+      // API, or the reverse). Not the person's mistake, so it does not count as a failure;
+      // and only someone with the right password gets this answer, so it reveals nothing.
+      refuse("secret_sealed_with_another_key", user);
+      throw new ApiError(
+        403,
+        "forbidden",
+        "This account was set up under a different portal key (for example on Amoy), so its " +
+          "authenticator codes can't be checked here. Sign in where it was created, or ask " +
+          "MOHAR to reset it here.",
+      );
+    }
+    const counter =
+      secret === undefined
+        ? undefined
+        : verifyCode(
+            secret,
+            input.code,
+            Math.floor(this.now().getTime() / 1000),
+            user.totpLastCounter,
+          );
     if (!passwordOk || counter === undefined) {
       const failedAttempts = user.failedAttempts + 1;
       const disabled = failedAttempts >= DISABLE_AFTER;

@@ -150,6 +150,32 @@ describe("signing in", () => {
     }
   });
 
+  it("says so when an account was set up under another portal key, only to its owner", async () => {
+    const { app, portalStore, codeFor } = await setup();
+    // As if made on Amoy and used on a local API: the secret is sealed under another key.
+    const user = portalStore.findUserByEmail("dev@bank.test")!;
+    portalStore.updateUser(user.id, {
+      totpSecretSealed: new Sealer("the-amoy-portal-key").seal("JBSWY3DPEHPK3PXP"),
+    });
+    const attempt = (password: string) =>
+      request(app)
+        .post("/portal/v1/session")
+        .set("Origin", ORIGIN)
+        .send({ email: "dev@bank.test", password, code: codeFor("dev@bank.test") });
+
+    const wrongPassword = await attempt("wrong password here");
+    expect(wrongPassword.status).toBe(401);
+    expect(wrongPassword.body.error.message).toBe("Email, password or code is wrong");
+
+    const rightPassword = await attempt(PASSWORD);
+    expect(rightPassword.status).toBe(403);
+    expect(rightPassword.body.error.message).toMatch(/different portal key/);
+    expect(portalStore.findUserByEmail("dev@bank.test")!.failedAttempts).toBe(1);
+    expect(portalStore.rawLog("security").at(-1)!.detail).toEqual({
+      reason: "secret_sealed_with_another_key",
+    });
+  });
+
   it("does not accept the same code twice", async () => {
     const { app, codeFor } = await setup();
     const body = { email: "dev@bank.test", password: PASSWORD, code: codeFor("dev@bank.test") };

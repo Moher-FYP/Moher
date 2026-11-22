@@ -73,6 +73,11 @@ paths:
       description: |
         Checks the password and the one-time code together and gives the same answer whichever
         was wrong, so the response does not reveal which part an attacker has right.
+
+        403 when the account is disabled, or when the password is right but this API cannot
+        read the account's authenticator secret: it was set up under another
+        `PORTAL_SECRET_KEY` (for example on the Amoy deployment). Only someone who knows the
+        password ever sees the second answer.
       security: []
       parameters:
         - $ref: "#/components/parameters/Origin"
