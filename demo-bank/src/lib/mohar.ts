@@ -28,7 +28,9 @@ export function getMoharQuiet(): MoharClient {
 }
 
 export function moharApiUrl(): string {
-  return process.env.MOHAR_API_URL ?? "http://localhost:4000";
+  // 127.0.0.1, not localhost: the API listens on IPv4 only (HOST=127.0.0.1), and Node may try
+  // ::1 first for "localhost", which fails with ECONNREFUSED.
+  return process.env.MOHAR_API_URL ?? "http://127.0.0.1:4000";
 }
 
 /** This partner's MOHAR API key. The fallback is the API's public local default. */
