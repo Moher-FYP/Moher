@@ -110,6 +110,32 @@ describe("store: simulated and real records never mix", () => {
     expect(store.walletsOf("sim-bank").map((w) => w.id)).toEqual(["wal_real"]);
   });
 
+  it("refuses an id or address already in use, and then changes nothing", () => {
+    const store = new Store(null);
+    store.open("unit");
+    const real = simulateHistory(options({ savers: 3, seed: 7 }));
+    const realWallet = { ...real.wallets[0]!, partnerSlug: "demo-bank", simulated: undefined };
+    store.saveWallet(realWallet);
+
+    const sameId = simulateHistory(options({ savers: 3 }));
+    sameId.wallets[1] = { ...sameId.wallets[1]!, id: realWallet.id };
+    expect(() => store.addSimulated(sameId)).toThrow(/wallet id .* already in use/);
+
+    const sameAddress = simulateHistory(options({ savers: 3 }));
+    sameAddress.wallets[1] = {
+      ...sameAddress.wallets[1]!,
+      address: realWallet.address.toUpperCase() as `0x${string}`,
+    };
+    expect(() => store.addSimulated(sameAddress)).toThrow(/address .* already in use/);
+
+    const twice = simulateHistory(options({ savers: 3 }));
+    twice.transactions[1] = { ...twice.transactions[1]!, id: twice.transactions[0]!.id };
+    expect(() => store.addSimulated(twice)).toThrow(/transaction id .* already in use/);
+
+    expect(store.walletsOf("sim-bank")).toHaveLength(0);
+    expect(store.walletsOf("demo-bank")).toEqual([realWallet]);
+  });
+
   it("refuses a record that is not marked simulated", () => {
     const store = new Store(null);
     store.open("unit");

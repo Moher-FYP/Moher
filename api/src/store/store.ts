@@ -225,7 +225,9 @@ export class Store {
 
   /**
    * Adds the history simulator's records (src/sim). Refuses a partner that has any real record,
-   * so simulated and real figures can never mix in one partner's analytics.
+   * so simulated and real figures can never mix in one partner's analytics, and refuses any id
+   * or wallet address already in use, so a simulated record can never replace a real one. All
+   * checks run before anything is written: the store is changed in full or not at all.
    */
   addSimulated(records: {
     wallets: WalletRecord[];
@@ -247,6 +249,30 @@ export class Store {
       throw new Error(
         `Partner "${real.partnerSlug}" already has real records (${real.id}); simulate into a partner of its own`,
       );
+    }
+    const clash = (
+      kind: string,
+      batch: { id: string }[],
+      existing: Record<string, unknown>,
+    ): void => {
+      const seen = new Set<string>();
+      for (const { id } of batch) {
+        if (id in existing || seen.has(id))
+          throw new Error(`The ${kind} id ${id} is already in use`);
+        seen.add(id);
+      }
+    };
+    clash("wallet", records.wallets, this.state.wallets);
+    clash("quote", records.quotes, this.state.quotes);
+    clash("transaction", records.transactions, this.state.transactions);
+    const addresses = new Set(
+      Object.values(this.state.wallets).map((w) => w.address.toLowerCase()),
+    );
+    for (const w of records.wallets) {
+      const address = w.address.toLowerCase();
+      if (addresses.has(address))
+        throw new Error(`The wallet address ${w.address} is already in use`);
+      addresses.add(address);
     }
     for (const w of records.wallets) this.state.wallets[w.id] = w;
     for (const q of records.quotes) this.state.quotes[q.id] = q;
