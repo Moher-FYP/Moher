@@ -26,6 +26,8 @@ export interface WalletRecord {
   kycAttestationHash: Hex;
   derivationIndex: number;
   createdAt: string;
+  /** Written by the history simulator (src/sim), never by a real request. */
+  simulated?: true;
 }
 
 export interface QuoteRecord {
@@ -45,6 +47,8 @@ export interface QuoteRecord {
   expiresAt: string;
   createdAt: string;
   usedByTransactionId?: string;
+  /** Written by the history simulator (src/sim), never by a real request. */
+  simulated?: true;
 }
 
 export type TransactionStatus = "pending" | "submitted" | "confirmed" | "failed";
@@ -67,6 +71,8 @@ export interface TransactionRecord {
   failureMessage?: string;
   createdAt: string;
   confirmedAt?: string;
+  /** Written by the history simulator (src/sim), never by a real request. */
+  simulated?: true;
 }
 
 export interface IdempotencyRecord {

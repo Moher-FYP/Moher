@@ -47,8 +47,9 @@ info:
     which can freeze and unfreeze and nothing else. Neither side can do it alone.
 
     ## Status
-    Parts 1 and 2 of the portal build: sign-in, read routes, audit log, API keys, webhooks,
-    freezes and the operator's partner list. The portal app follows in part 3.
+    Parts 1 to 3 of the portal build: sign-in, read routes, audit log, API keys, webhooks,
+    freezes, the operator's partner list and the portal app. Part 4 adds `/portal/v1/analytics`
+    for the overview and trading pages.
   contact:
     name: MOHAR FYP team (FAST-NUCES)
 servers:
@@ -142,6 +143,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Overview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /portal/v1/analytics:
+    get:
+      tags: [Partner data]
+      operationId: getAnalytics
+      summary: Figures and series for the overview and trading pages
+      description: |
+        Role `viewer` or above, partner users only. Everything is computed on request from
+        MOHAR's ledger of quotes and trades, for the signed-in user's partner only.
+
+        **Periods.** Days are Pakistan calendar days (UTC+05:00). The period is the `days`
+        days ending with `until` (today by default), and every figure also comes for the
+        `days` days before it (`previous`), so a page can show the change.
+
+        **Custody** is the partner's gold under custody, rebuilt from confirmed trades:
+        buys add grams, sales remove them, and a transfer moves grams between partners
+        (a transfer between two customers of the same partner changes nothing).
+
+        **Bridge.** `closingPkr = openingPkr + boughtPkr − soldPkr + transferredInPkr −
+        transferredOutPkr + priceEffectPkr`. Opening and closing value the custody at the
+        price on the first and last day; trades are valued at the gold price they traded at
+        (quote `grossAmountPkr`). What is left is the effect of the gold price.
+
+        **Prices** come from MOHAR's quotes (every quote records the price it used), carried
+        forward over days with no quote, and the current price for today.
+
+        `simulated` is true when the partner's records were written by the history simulator
+        (`pnpm --filter @mohar/api simulate`); a page must then say so on every chart.
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+        - name: until
+          in: query
+          description: Last day of the period, a Pakistan calendar date. Default today.
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: The partner's analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analytics"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1135,6 +1190,340 @@ components:
         partner:
           description: The partner's slug. Absent for operators.
           type: string
+
+    SignedGrams:
+      type: string
+      description: Grams, up to 8 decimals; negative when more left than came in.
+      pattern: "^-?\\d+(\\.\\d{1,8})?$"
+      examples: ["-0.25000000"]
+    SignedPkr:
+      type: string
+      description: Rupees, up to 2 decimals; negative for a fall.
+      pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      examples: ["-1250.40"]
+    Ratio:
+      description: A share between 0 and 1, or null when there was nothing to divide by.
+      type: [number, "null"]
+      minimum: 0
+      maximum: 1
+    GramsChange:
+      type: object
+      required: [value, previous]
+      properties:
+        value:
+          $ref: "./openapi.yaml#/components/schemas/Grams"
+        previous:
+          $ref: "./openapi.yaml#/components/schemas/Grams"
+    SignedGramsChange:
+      type: object
+      required: [value, previous]
+      properties:
+        value:
+          $ref: "#/components/schemas/SignedGrams"
+        previous:
+          $ref: "#/components/schemas/SignedGrams"
+    PkrChange:
+      type: object
+      required: [value, previous]
+      properties:
+        value:
+          $ref: "./openapi.yaml#/components/schemas/Pkr"
+        previous:
+          $ref: "./openapi.yaml#/components/schemas/Pkr"
+    NullablePkrChange:
+      type: object
+      required: [value, previous]
+      properties:
+        value:
+          oneOf:
+            - $ref: "./openapi.yaml#/components/schemas/Pkr"
+            - type: "null"
+        previous:
+          oneOf:
+            - $ref: "./openapi.yaml#/components/schemas/Pkr"
+            - type: "null"
+    CountChange:
+      type: object
+      required: [value, previous]
+      properties:
+        value:
+          type: integer
+          minimum: 0
+        previous:
+          type: integer
+          minimum: 0
+    RatioChange:
+      type: object
+      required: [value, previous]
+      properties:
+        value:
+          $ref: "#/components/schemas/Ratio"
+        previous:
+          $ref: "#/components/schemas/Ratio"
+    MillisecondsChange:
+      type: object
+      required: [value, previous]
+      properties:
+        value:
+          type: [integer, "null"]
+          minimum: 0
+        previous:
+          type: [integer, "null"]
+          minimum: 0
+    Analytics:
+      type: object
+      required:
+        [
+          partner,
+          simulated,
+          period,
+          previousPeriod,
+          pricePerGramPkr,
+          tiles,
+          bridge,
+          series,
+          funnel,
+          settlement,
+          tickets,
+          savers,
+        ]
+      properties:
+        partner:
+          type: string
+        simulated:
+          type: boolean
+          description: The partner's records come from the history simulator, not real trades.
+        period:
+          type: object
+          required: [from, until, days]
+          properties:
+            from:
+              type: string
+              format: date
+            until:
+              type: string
+              format: date
+            days:
+              type: integer
+        previousPeriod:
+          type: object
+          required: [from, until]
+          properties:
+            from:
+              type: string
+              format: date
+            until:
+              type: string
+              format: date
+        pricePerGramPkr:
+          description: Price of one gram at the end of the period.
+          $ref: "./openapi.yaml#/components/schemas/Pkr"
+        tiles:
+          type: object
+          required:
+            [
+              custodyGrams,
+              custodyPkr,
+              netFlowGrams,
+              activeSavers,
+              feesPkr,
+              volumePkr,
+              trades,
+              conversion,
+              bandCancellationRate,
+              medianTicketPkr,
+              settlementP50Ms,
+            ]
+          properties:
+            custodyGrams:
+              description: Gold under custody at the end of the period (the north-star metric).
+              $ref: "#/components/schemas/GramsChange"
+            custodyPkr:
+              description: Gold under custody valued at the price at the end of the period.
+              $ref: "#/components/schemas/PkrChange"
+            netFlowGrams:
+              description: Grams bought minus sold, plus transfers in minus out, in the period.
+              $ref: "#/components/schemas/SignedGramsChange"
+            activeSavers:
+              description: Customers who bought, sold or sent gold in the period.
+              $ref: "#/components/schemas/CountChange"
+            feesPkr:
+              description: Exchange margin plus platform fee on confirmed buys and sales.
+              $ref: "#/components/schemas/PkrChange"
+            volumePkr:
+              description: What customers paid for buys and received for sales (confirmed).
+              $ref: "#/components/schemas/PkrChange"
+            trades:
+              description: Confirmed buys and sales.
+              $ref: "#/components/schemas/CountChange"
+            conversion:
+              description: Quotes that became a confirmed trade, as a share of quotes given.
+              $ref: "#/components/schemas/RatioChange"
+            bandCancellationRate:
+              description: Trades refused because the price moved more than 0.5%, as a share of trades that finished.
+              $ref: "#/components/schemas/RatioChange"
+            medianTicketPkr:
+              description: Median amount paid for a confirmed buy.
+              $ref: "#/components/schemas/NullablePkrChange"
+            settlementP50Ms:
+              description: Median time from request to confirmation, in milliseconds.
+              $ref: "#/components/schemas/MillisecondsChange"
+        reserve:
+          description: The latest proof of reserve. Absent until one is published.
+          type: object
+          required: [backingRatio, asOf]
+          properties:
+            backingRatio:
+              type: number
+              description: Gold the vault attested divided by tokens in issue (1 = fully backed).
+            asOf:
+              type: string
+              format: date-time
+        bridge:
+          type: object
+          required:
+            [
+              openingPkr,
+              boughtPkr,
+              soldPkr,
+              transferredInPkr,
+              transferredOutPkr,
+              priceEffectPkr,
+              closingPkr,
+            ]
+          properties:
+            openingPkr:
+              $ref: "./openapi.yaml#/components/schemas/Pkr"
+            boughtPkr:
+              $ref: "./openapi.yaml#/components/schemas/Pkr"
+            soldPkr:
+              $ref: "./openapi.yaml#/components/schemas/Pkr"
+            transferredInPkr:
+              $ref: "./openapi.yaml#/components/schemas/Pkr"
+            transferredOutPkr:
+              $ref: "./openapi.yaml#/components/schemas/Pkr"
+            priceEffectPkr:
+              $ref: "#/components/schemas/SignedPkr"
+            closingPkr:
+              $ref: "./openapi.yaml#/components/schemas/Pkr"
+        series:
+          description: One entry per day of the period, oldest first.
+          type: array
+          items:
+            type: object
+            required:
+              [date, boughtGrams, soldGrams, netGrams, custodyGrams, pricePerGramPkr, trades]
+            properties:
+              date:
+                type: string
+                format: date
+              boughtGrams:
+                $ref: "./openapi.yaml#/components/schemas/Grams"
+              soldGrams:
+                $ref: "./openapi.yaml#/components/schemas/Grams"
+              netGrams:
+                description: Bought minus sold plus transfers in minus out.
+                $ref: "#/components/schemas/SignedGrams"
+              custodyGrams:
+                description: Gold under custody at the end of the day.
+                $ref: "./openapi.yaml#/components/schemas/Grams"
+              pricePerGramPkr:
+                description: Price of one gram at the end of the day.
+                $ref: "./openapi.yaml#/components/schemas/Pkr"
+              trades:
+                type: integer
+        funnel:
+          description: What became of the quotes given in the period.
+          type: object
+          required: [quotes, traded, failed, pending, expired, open, failureReasons]
+          properties:
+            quotes:
+              type: integer
+            traded:
+              type: integer
+              description: Used by a trade that confirmed.
+            failed:
+              type: integer
+              description: Used by a trade that failed.
+            pending:
+              type: integer
+              description: Used by a trade still settling.
+            expired:
+              type: integer
+              description: Never used, and past its expiry.
+            open:
+              type: integer
+              description: Never used, still within its expiry at the end of the period.
+            failureReasons:
+              type: array
+              description: Failed trades by error code, most first.
+              items:
+                type: object
+                required: [code, count]
+                properties:
+                  code:
+                    type: string
+                  count:
+                    type: integer
+        settlement:
+          description: Request-to-confirmation time of trades confirmed in the period.
+          type: object
+          required: [count, p50Ms, p95Ms, maxMs]
+          properties:
+            count:
+              type: integer
+            p50Ms:
+              type: [integer, "null"]
+            p95Ms:
+              type: [integer, "null"]
+            maxMs:
+              type: [integer, "null"]
+        tickets:
+          description: Amounts paid for confirmed buys in the period.
+          type: object
+          required: [count, medianPkr, meanPkr, bins]
+          properties:
+            count:
+              type: integer
+            medianPkr:
+              oneOf:
+                - $ref: "./openapi.yaml#/components/schemas/Pkr"
+                - type: "null"
+            meanPkr:
+              oneOf:
+                - $ref: "./openapi.yaml#/components/schemas/Pkr"
+                - type: "null"
+            bins:
+              type: array
+              items:
+                type: object
+                required: [label, minPkr, count]
+                properties:
+                  label:
+                    type: string
+                  minPkr:
+                    $ref: "./openapi.yaml#/components/schemas/Pkr"
+                  maxPkr:
+                    description: Exclusive upper bound; absent for the last bin.
+                    $ref: "./openapi.yaml#/components/schemas/Pkr"
+                  count:
+                    type: integer
+        savers:
+          type: object
+          required: [registered, funded, active, new]
+          properties:
+            registered:
+              type: integer
+              description: Wallets opened by the end of the period.
+            funded:
+              type: integer
+              description: Wallets holding gold at the end of the period.
+            active:
+              type: integer
+              description: Wallets that bought, sold or sent gold in the period.
+            new:
+              type: integer
+              description: Wallets whose first purchase was in the period.
 
     Overview:
       type: object

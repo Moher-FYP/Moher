@@ -28,9 +28,10 @@ stopped. Against Amoy, prefix both API commands with `DOTENV_CONFIG_PATH=.env.am
 
 | Page                  | Who            | What                                                                     |
 | --------------------- | -------------- | ------------------------------------------------------------------------ |
-| Overview              | partner staff  | Customers, gold held, 30-day volume, failures, reserve, latest trades    |
+| Overview              | partner staff  | Headline figures against the previous period, custody and price, bridge  |
+| Trading               | partner staff  | Buys and sales per day, what became of quotes, buy sizes, time to settle |
 | Customers             | partner staff  | Search wallets; one wallet's gold, KYC limits used and transactions      |
-| Transactions          | partner staff  | Filter; one trade from quote to block; CSV export for compliance         |
+| Transactions          | partner staff  | Filter (kept in the address); one trade from quote to block; CSV export  |
 | Limits and reserve    | partner staff  | KYC limits per level, customers at each, proof of reserve                |
 | API keys and webhooks | developer      | Create and revoke keys, webhook URL and secret, delivery log with resend |
 | Compliance            | compliance     | Freeze requests, the audit and security logs and their hash-chain check  |
@@ -42,6 +43,28 @@ the Partners and freezes page by a MOHAR operator, from MOHAR's compliance key.
 
 After the first operator exists, add everyone else from the operator page: it shows the new
 person's QR code and password once, and lists locked accounts so an operator can unlock them.
+
+Overview and Trading read `GET /portal/v1/analytics?days=7|30|90`; the period is kept in the
+address (`?days=`), so a view can be bookmarked or sent to a colleague. Every headline figure is
+compared with the period of the same length just before it, has a one-line definition behind its
+`?`, and links to the rows it was counted from where there are some. The charts are plain SVG
+(`src/components/charts.tsx`): no chart library, and each carries a hidden table for screen
+readers.
+
+### Demo data
+
+A new partner has no history to show. On a local chain, the API's simulator writes a believable
+one for a separate demonstration partner whose slug starts `sim-`, and the pages show a
+"Simulated history" banner whenever they read it:
+
+```bash
+# Anvil and the contracts running, the API started once and then stopped
+pnpm --filter @mohar/api simulate --partner sim-bank                    # 200 savers, 90 days, seed 1
+pnpm --filter @mohar/api portal:user add --email you@sim-bank.test --role viewer --partner sim-bank
+pnpm --filter @mohar/api dev
+```
+
+Simulated records never mix with real ones: `docs/api.md` says how.
 
 ## Tests
 

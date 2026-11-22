@@ -1,6 +1,14 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import type { AppContext } from "../context.js";
+import {
+  ANALYTICS_PERIODS,
+  computeAnalytics,
+  pakistanDate,
+  type AnalyticsDays,
+  type Change,
+  type PeriodFigures,
+} from "../domain/analytics.js";
 import { formatGrams, formatPkr } from "../domain/money.js";
 import { valuePaisa } from "../domain/pricing.js";
 import type { TransactionRecord, WalletRecord } from "../domain/types.js";
@@ -50,6 +58,16 @@ const TransactionFilters = z.object({
 });
 
 const TransactionQuery = TransactionFilters.extend({ limit, cursor: z.string().optional() });
+
+const AnalyticsQuery = z.object({
+  days: z.coerce
+    .number()
+    .refine((d): d is AnalyticsDays => (ANALYTICS_PERIODS as readonly number[]).includes(d), {
+      message: "days: one of 7, 30 or 90",
+    })
+    .default(30),
+  until: z.iso.date().optional(),
+});
 
 const AuditQuery = z.object({
   log: z.enum(["audit", "security"]).default("audit"),
@@ -184,6 +202,112 @@ export function portalRoutes(ctx: AppContext, portal: PortalContext): Router {
           }
         : {}),
       latestTransactions: transactions.slice(0, 10).map(present),
+    });
+  });
+
+  router.get("/portal/v1/analytics", ...viewer, async (req, res) => {
+    const query = parse(AnalyticsQuery, req.query);
+    const partner = sessionPartner(res);
+    const now = new Date();
+    const today = pakistanDate(now.getTime());
+    const until = query.until ?? today;
+    if (until > today) throw new ApiError(400, "invalid_request", "until: not after today");
+    const [currentPrice, reserve] = await Promise.all([
+      ctx.price.current(),
+      ctx.chain.latestReserve(),
+    ]);
+    const a = computeAnalytics({
+      partner,
+      days: query.days as AnalyticsDays,
+      until,
+      now,
+      wallets: ctx.store.walletsOf(partner),
+      transactions: ctx.store.allTransactions(),
+      quotes: ctx.store.quotesOf(partner),
+      priceQuotes: ctx.store.allQuotes(),
+      currentPrice,
+    });
+    const both = <T>(pick: (f: PeriodFigures) => T): Change<T> => ({
+      value: pick(a.current),
+      previous: pick(a.previous),
+    });
+    const grams = (pick: (f: PeriodFigures) => bigint) => {
+      const c = both(pick);
+      return { value: formatGrams(c.value), previous: formatGrams(c.previous) };
+    };
+    const pkr = (pick: (f: PeriodFigures) => bigint | null) => {
+      const c = both(pick);
+      const f = (v: bigint | null) => (v === null ? null : formatPkr(v));
+      return { value: f(c.value), previous: f(c.previous) };
+    };
+    const f = a.current;
+    res.json({
+      partner,
+      simulated: a.simulated,
+      period: a.period,
+      previousPeriod: a.previousPeriod,
+      pricePerGramPkr: formatPkr(a.pricePerGramPaisa),
+      tiles: {
+        custodyGrams: grams((x) => x.custodyEnd),
+        custodyPkr: pkr((x) => x.valueEnd),
+        netFlowGrams: grams((x) => x.netFlowGrams),
+        activeSavers: both((x) => x.activeSavers),
+        feesPkr: pkr((x) => x.feesPaisa),
+        volumePkr: pkr((x) => x.volumePaisa),
+        trades: both((x) => x.trades),
+        conversion: both((x) => x.conversion),
+        bandCancellationRate: both((x) => x.bandCancellationRate),
+        medianTicketPkr: pkr((x) => x.tickets.medianPaisa),
+        settlementP50Ms: both((x) => x.settlement.p50Ms),
+      },
+      ...(reserve && reserve.tokenSupplyAtPublish > 0n
+        ? {
+            reserve: {
+              backingRatio:
+                Number(
+                  (reserve.attestation.totalGrams * 1_000_000n) / reserve.tokenSupplyAtPublish,
+                ) / 1_000_000,
+              asOf: new Date(Number(reserve.attestation.asOf) * 1000).toISOString(),
+            },
+          }
+        : {}),
+      bridge: {
+        openingPkr: formatPkr(f.valueStart),
+        boughtPkr: formatPkr(f.boughtPaisa),
+        soldPkr: formatPkr(f.soldPaisa),
+        transferredInPkr: formatPkr(f.transferredInPaisa),
+        transferredOutPkr: formatPkr(f.transferredOutPaisa),
+        priceEffectPkr: formatPkr(f.priceEffectPaisa),
+        closingPkr: formatPkr(f.valueEnd),
+      },
+      series: a.series.map((d) => ({
+        date: d.date,
+        boughtGrams: formatGrams(d.boughtGrams),
+        soldGrams: formatGrams(d.soldGrams),
+        netGrams: formatGrams(d.netGrams),
+        custodyGrams: formatGrams(d.custodyGrams),
+        pricePerGramPkr: formatPkr(d.pricePerGramPaisa),
+        trades: d.trades,
+      })),
+      funnel: f.funnel,
+      settlement: f.settlement,
+      tickets: {
+        count: f.tickets.count,
+        medianPkr: f.tickets.medianPaisa === null ? null : formatPkr(f.tickets.medianPaisa),
+        meanPkr: f.tickets.meanPaisa === null ? null : formatPkr(f.tickets.meanPaisa),
+        bins: f.tickets.bins.map((b) => ({
+          label: b.label,
+          minPkr: formatPkr(b.minPaisa),
+          ...(b.maxPaisa !== undefined ? { maxPkr: formatPkr(b.maxPaisa) } : {}),
+          count: b.count,
+        })),
+      },
+      savers: {
+        registered: f.registered,
+        funded: f.funded,
+        active: f.activeSavers,
+        new: f.newSavers,
+      },
     });
   });
 

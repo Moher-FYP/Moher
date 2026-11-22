@@ -6,6 +6,7 @@ import { loadConfig } from "../config.js";
 import { PartnerDirectory } from "../http/auth.js";
 import { newId } from "../lib/ids.js";
 import { LOCAL_ONLY } from "../secrets.js";
+import { isSimulatedPartner } from "../sim/simulate.js";
 import { generatePassword, hashPassword } from "./passwords.js";
 import { PortalStore, type PortalRole } from "./portal-store.js";
 import { Sealer } from "./sealed.js";
@@ -18,6 +19,7 @@ import { newTotpSecret, otpauthUri } from "./totp.js";
  *
  *   pnpm --filter @mohar/api portal:user add --email ali@demo-bank.test --role developer --partner demo-bank
  *   pnpm --filter @mohar/api portal:user add --email ops@mohar.test --role operator
+ *   pnpm --filter @mohar/api portal:user add --email sim@demo.test --role viewer --partner sim-bank
  *   pnpm --filter @mohar/api portal:user list
  *   pnpm --filter @mohar/api portal:user enable --email ali@demo-bank.test
  *   pnpm --filter @mohar/api portal:user disable --email ali@demo-bank.test
@@ -83,7 +85,10 @@ async function main(): Promise<void> {
     if (role === "operator" && partner) fail("Operators are MOHAR staff: leave out --partner");
     if (role !== "operator") {
       if (!partner) fail("Give --partner, the partner's slug (e.g. demo-bank)");
-      if (!partners.get(partner)) {
+      if (isSimulatedPartner(partner)) {
+        // A simulated partner has history only (src/sim): no API key, webhooks or freezes.
+        if (role !== "viewer") fail("A simulated partner's users can only be viewers");
+      } else if (!partners.get(partner)) {
         fail(
           `No partner "${partner}" in PARTNER_API_KEYS (known: ${partners
             .all()

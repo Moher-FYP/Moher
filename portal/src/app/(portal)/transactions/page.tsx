@@ -1,15 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { useMe } from "@/components/Shell";
 import { TransactionRows } from "@/components/TransactionRows";
 import { Card, Empty, ErrorBox, inputClass, Loading, PageHeader, useLoad } from "@/components/ui";
 import { api, type Page, type Transaction } from "@/lib/api";
 
+const TYPES = ["mint", "burn", "transfer"];
+const STATUSES = ["confirmed", "failed", "pending", "submitted"];
+
 export default function TransactionsPage() {
+  // Filters live in the address (?type=&status=) so the analytics pages can link here.
+  return (
+    <Suspense fallback={<Loading />}>
+      <TransactionsBody />
+    </Suspense>
+  );
+}
+
+function TransactionsBody() {
   const me = useMe();
-  const [type, setType] = useState("");
-  const [status, setStatus] = useState("");
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const pick = (value: string | null, allowed: string[]) =>
+    value && allowed.includes(value) ? value : "";
+  const type = pick(params.get("type"), TYPES);
+  const status = pick(params.get("status"), STATUSES);
+  const setFilter = (name: "type" | "status", value: string) => {
+    const next = new URLSearchParams(params.toString());
+    if (value) next.set(name, value);
+    else next.delete(name);
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
   const [cursor, setCursor] = useState<string | undefined>();
   const filters = new URLSearchParams({ ...(type ? { type } : {}), ...(status ? { status } : {}) });
   const page = new URLSearchParams(filters);
@@ -40,12 +65,13 @@ export default function TransactionsPage() {
       <Card>
         <div className="mb-4 flex flex-wrap gap-3">
           <select
+            aria-label="Type"
             value={type}
             onChange={(e) => {
-              setType(e.target.value);
+              setFilter("type", e.target.value);
               setCursor(undefined);
             }}
-            className={`${inputClass} w-40`}
+            className={`${inputClass.replace("w-full", "")} w-44`}
           >
             <option value="">All types</option>
             <option value="mint">Buy</option>
@@ -53,12 +79,13 @@ export default function TransactionsPage() {
             <option value="transfer">Transfer</option>
           </select>
           <select
+            aria-label="Status"
             value={status}
             onChange={(e) => {
-              setStatus(e.target.value);
+              setFilter("status", e.target.value);
               setCursor(undefined);
             }}
-            className={`${inputClass} w-40`}
+            className={`${inputClass.replace("w-full", "")} w-44`}
           >
             <option value="">All statuses</option>
             <option value="confirmed">Confirmed</option>

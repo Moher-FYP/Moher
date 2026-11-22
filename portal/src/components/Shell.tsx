@@ -26,6 +26,7 @@ const PARTNER: Role[] = ["viewer", "developer", "compliance"];
 const NAV: NavItem[] = [
   { href: "/", label: "Overview", roles: PARTNER },
   { href: "/customers", label: "Customers", roles: PARTNER },
+  { href: "/trading", label: "Trading", roles: PARTNER },
   { href: "/transactions", label: "Transactions", roles: PARTNER },
   { href: "/limits", label: "Limits and reserve", roles: PARTNER },
   { href: "/developers", label: "API keys and webhooks", roles: ["developer"] },

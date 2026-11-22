@@ -69,7 +69,8 @@ slippage demo.
 
 The partner portal needs a user first (with the API stopped):
 `pnpm --filter @mohar/api portal:user add --email dev@demo-bank.test --role developer --partner demo-bank`.
-`portal/README.md` explains the rest.
+`portal/README.md` explains the rest, including demo data for its analytics pages
+(`pnpm --filter @mohar/api simulate --partner sim-bank`).
 
 To buy, sell and check the reserve by hand, follow the curl walkthrough in
 [`docs/api.md`](docs/api.md).
