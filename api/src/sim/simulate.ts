@@ -241,8 +241,10 @@ export function simulateHistory(o: SimulationOptions): SimulatedHistory {
     const kind = rng.pick(KINDS);
     const level = rng.pick(KYC).level;
     const limit = o.limits[level];
-    // Sign-ups rise towards today: density proportional to 0.4 + 0.6 t.
-    const t = (-0.4 + Math.sqrt(0.16 + 1.2 * rng.next())) / 0.6;
+    // Sign-ups rise towards today: density (0.4 + 0.6 t) / 0.7 on [0, 1], drawn by inverting
+    // its CDF (0.4 t + 0.3 t²) / 0.7 = u. Dividing by 0.7 matters: without it t overshoots 1
+    // for 30% of draws, which all landed on today.
+    const t = (-0.4 + Math.sqrt(0.16 + 0.84 * rng.next())) / 0.6;
     const joined = Math.min(o.days, Math.floor(t * o.days));
     const joinedAt = momentOn(joined);
     if (joinedAt >= now) continue;

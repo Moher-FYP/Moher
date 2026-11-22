@@ -90,6 +90,20 @@ describe("simulated history", () => {
   });
 });
 
+describe("simulateHistory: sign-ups", () => {
+  it("spreads sign-ups over the period, whatever the time of day", () => {
+    // Just after midnight in Pakistan, and late in the evening: the same spread.
+    for (const now of ["2026-11-22T19:20:00Z", "2026-11-22T17:50:00Z"]) {
+      const history = simulateHistory(options({ savers: 400, now: new Date(now) }));
+      const joined = history.wallets.map((w) => Date.parse(w.createdAt));
+      const lastDay = Date.parse(now) - 86_400_000;
+      // Rising towards today, but no pile-up on the last day (about 1% expected).
+      expect(history.wallets.length).toBeGreaterThan(390);
+      expect(joined.filter((at) => at > lastDay).length).toBeLessThan(400 * 0.05);
+    }
+  });
+});
+
 describe("store: simulated and real records never mix", () => {
   it("refuses simulated records for a partner with real ones, and clears only simulated ones", () => {
     const store = new Store(null);
@@ -128,8 +142,9 @@ describe("store: simulated and real records never mix", () => {
     };
     expect(() => store.addSimulated(sameAddress)).toThrow(/address .* already in use/);
 
-    const twice = simulateHistory(options({ savers: 3 }));
-    twice.transactions[1] = { ...twice.transactions[1]!, id: twice.transactions[0]!.id };
+    const twice = simulateHistory(options({ savers: 20 }));
+    const first = twice.transactions[0]!;
+    twice.transactions.push({ ...first });
     expect(() => store.addSimulated(twice)).toThrow(/transaction id .* already in use/);
 
     expect(store.walletsOf("sim-bank")).toHaveLength(0);
