@@ -58,8 +58,8 @@ pnpm chain                                   # 1. local blockchain (Anvil) on :8
 pnpm contracts:deploy:local                  # 2a. deploy contracts (after EVERY chain restart)
 pnpm --filter @mohar/sdk build && pnpm --filter @mohar/api dev   # 2b. API on :4000
 pnpm --filter @mohar/sdk dev                 # 3. SDK rebuilds on change
-pnpm --filter @mohar/demo-bank dev           # 4. Moher Bank on :3000
-pnpm --filter @mohar/demo-bank dev:wallet    # 5. Moher Wallet on :3001 (optional)
+pnpm --filter @mohar/demo-bank dev           # 4. MOHAR Bank on :3000
+pnpm --filter @mohar/demo-bank dev:wallet    # 5. MOHAR Wallet on :3001 (optional)
 pnpm --filter @mohar/portal dev              # 6. Partner portal on :3002 (optional)
 ```
 

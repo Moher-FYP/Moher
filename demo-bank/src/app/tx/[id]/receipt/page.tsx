@@ -3,11 +3,10 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import type { ReactNode } from "react";
-import { AppHeader } from "@/components/AppHeader";
+import { BackHeader, Chip, Rows, Wordmark, quietButton } from "@/components/kit";
 import { PrintButton } from "@/components/PrintButton";
-import { quietButton } from "@/components/ui";
 import type { Customer } from "@/lib/customers";
-import { exactGrams, fullDate, grams, pkr, shortHash, usd } from "@/lib/format";
+import { exactGrams, fullDate, gramsFigure, pkr, shortHash, usd } from "@/lib/format";
 import { getMohar } from "@/lib/mohar";
 import { partner } from "@/lib/partner";
 import { PAYMENT_NOT_RECORDED, paymentFor } from "@/lib/payments";
@@ -31,77 +30,98 @@ export default async function ReceiptPage({ params }: PageProps<"/tx/[id]/receip
 
   const quote = txn.quoteId ? recallQuote(txn.quoteId, customer.id) : undefined;
   const incoming = txn.type === "transfer" && txn.walletId !== (await walletIdFor(customer));
-  const kind = txn.type === "mint" ? "buy" : txn.type === "burn" ? "sell" : incoming ? "in" : "out";
+  const kind: Kind =
+    txn.type === "mint" ? "buy" : txn.type === "burn" ? "sell" : incoming ? "in" : "out";
   const settledAt = txn.confirmedAt ?? txn.createdAt;
+  const dash = <div className="mt-4 mb-1 border-t border-dashed border-line" />;
 
   return (
     <>
-      <AppHeader customer={customer} title="Receipt" backHref={`/tx/${txn.id}`} />
-      <article className="space-y-6 p-5" aria-labelledby="receipt-title">
-        <header className="space-y-1 border-b border-dashed border-line pb-5 text-center">
-          <p className="text-sm font-semibold tracking-wide text-bank uppercase">
-            {partner().name} · Gold Savings
-          </p>
-          <h1 id="receipt-title" className="font-display text-xl font-semibold">
-            {HEADINGS[kind]}
+      <BackHeader title="Receipt" backHref={`/tx/${txn.id}`} />
+      <div className="flex flex-col gap-3.5 px-5 pt-2 pb-7">
+        <article
+          aria-labelledby="receipt-title"
+          className="ring-line rounded-[26px] bg-surface px-5 pt-[22px] pb-[18px] print:shadow-none"
+        >
+          <div className="flex items-center justify-between">
+            <Wordmark word={partner().word} size={20} />
+            <Chip tone="bg-ok-pale text-ok">Settled</Chip>
+          </div>
+          <h1 id="receipt-title" className="mt-[18px] text-[13px] text-ink-soft">
+            {HEADINGS[kind]} · {fullDate(settledAt)}
           </h1>
-          <Headline kind={kind} txn={txn} />
-          <p className="text-sm text-ink-soft">{fullDate(settledAt)}</p>
-        </header>
-
-        <Section title="Details">
-          <Row label="Receipt number" value={<span className="font-mono">{txn.id}</span>} />
-          <Row label="Customer" value={customer.name} />
-          <Row label="Account" value="Gold Savings" />
-          <Counterparty kind={kind} txn={txn} />
-        </Section>
-
-        <Section title="Gold">
-          <Row label="Quantity" value={exactGrams(txn.grams)} />
-          <Row label="Purity" value="24 karat" />
-          <Row label="Held" value={HELD[kind]} />
-        </Section>
-
-        {kind === "buy" || kind === "sell" ? <Charges kind={kind} txn={txn} quote={quote} /> : null}
-
-        <Section title="Settlement">
-          <Row label="Status" value="Settled" />
-          <Row label="Type" value="Spot, in one ledger transaction" />
-          {txn.txHash ? (
-            <Row
-              label="Ledger reference"
-              value={
-                txn.explorerUrl ? (
-                  <a href={txn.explorerUrl} className="font-mono text-bank underline">
-                    {shortHash(txn.txHash)}
-                  </a>
-                ) : (
-                  <span className="font-mono">{shortHash(txn.txHash)}</span>
-                )
-              }
-            />
+          <p
+            className="mt-1 font-display text-[38px] font-extrabold tracking-[-0.035em]"
+            title={exactGrams(txn.grams)}
+          >
+            {gramsFigure(txn.grams)} g
+          </p>
+          {kind === "buy" || kind === "sell" ? (
+            <>
+              {dash}
+              <Charges kind={kind} txn={txn} quote={quote} />
+            </>
           ) : null}
-          {txn.blockNumber !== undefined ? (
-            <Row label="Block" value={txn.blockNumber.toLocaleString("en-PK")} />
-          ) : null}
-        </Section>
-
-        <p className="rounded-2xl bg-paper p-4 text-sm text-ink-soft">
-          No interest is charged or paid. Every gram in Gold Savings is matched by gold held in the
-          vault; you can check it any time on{" "}
-          <Link href="/verify" className="font-semibold text-bank underline">
-            Your gold in the vault
-          </Link>
-          .
-        </p>
-
-        <div className="space-y-3 print:hidden">
+          {dash}
+          <Rows
+            items={[
+              ...counterparty(kind, txn),
+              ["Customer", customer.name] as [ReactNode, ReactNode],
+              ["Gold", `${HELD[kind]} · 24 karat`],
+              [
+                "Exact quantity",
+                <span key="q" className="font-mono text-[13px]">
+                  {exactGrams(txn.grams)}
+                </span>,
+              ],
+              ["Settlement", "Spot, in one ledger transaction"],
+              [
+                "Receipt number",
+                <span key="n" className="font-mono text-[13px]">
+                  {txn.id}
+                </span>,
+              ],
+              ...(txn.txHash
+                ? [
+                    [
+                      "Ledger reference",
+                      txn.explorerUrl ? (
+                        <a
+                          key="h"
+                          href={txn.explorerUrl}
+                          className="font-mono text-[13px] underline"
+                        >
+                          {shortHash(txn.txHash)} ↗
+                        </a>
+                      ) : (
+                        <span key="h" className="font-mono text-[13px]">
+                          {shortHash(txn.txHash)}
+                        </span>
+                      ),
+                    ] as [ReactNode, ReactNode],
+                  ]
+                : []),
+            ]}
+          />
+          <p className="mt-3 text-xs leading-normal text-ink-soft">
+            {quote
+              ? `Price fixed when you asked for it, ${fullDate(quote.createdAt)}: gold ${usd(quote.price.xauUsd)} per troy ounce, US$ 1 = ${pkr(quote.price.usdPkr)}. `
+              : ""}
+            No interest is charged or paid. Gold provided by MOHAR, held for you by its custodian;
+            check it any time on{" "}
+            <Link href="/verify" className="font-semibold text-ink underline">
+              Gold in the vault
+            </Link>
+            .
+          </p>
+        </article>
+        <div className="flex flex-col gap-2.5 print:hidden">
           <PrintButton />
           <Link href="/" className={quietButton}>
-            Back to Gold Savings
+            Back to home
           </Link>
         </div>
-      </article>
+      </div>
     </>
   );
 }
@@ -122,73 +142,37 @@ const HELD: Record<Kind, string> = {
   out: "Moved to the recipient's name",
 };
 
-function Headline({ kind, txn }: { kind: Kind; txn: Transaction }) {
-  if ((kind === "buy" || kind === "sell") && txn.netAmountPkr) {
-    return (
-      <>
-        <p className="font-display text-4xl font-bold">{pkr(txn.netAmountPkr)}</p>
-        <p className="text-ink-soft">
-          {kind === "buy" ? "paid for" : "received for"} {grams(txn.grams)} of gold
-        </p>
-      </>
-    );
-  }
-  return <p className="font-display text-4xl font-bold">{grams(txn.grams)}</p>;
-}
-
-function Counterparty({ kind, txn }: { kind: Kind; txn: Transaction }) {
+function counterparty(kind: Kind, txn: Transaction): [ReactNode, ReactNode][] {
   // How the partner moved the rupees. Not known after a restart: then its own account.
   const paid = paymentFor(txn.id)?.label ?? PAYMENT_NOT_RECORDED;
-  if (kind === "buy") return <Row label="Paid from" value={paid} />;
-  if (kind === "sell") return <Row label="Paid into" value={paid} />;
+  if (kind === "buy") return [["Paid from", paid]];
+  if (kind === "sell") return [["Paid into", paid]];
   const other: Customer | undefined = customerForWallet(
     kind === "in" ? txn.walletId : txn.counterpartyWalletId,
   );
-  return <Row label={kind === "in" ? "From" : "To"} value={other?.name ?? "Another customer"} />;
+  return [[kind === "in" ? "From" : "To", other?.name ?? "Another customer"]];
 }
 
 function Charges({ kind, txn, quote }: { kind: "buy" | "sell"; txn: Transaction; quote?: Quote }) {
   const total = kind === "buy" ? "Total paid" : "You received";
   if (!quote) {
     return (
-      <Section title="Price" note="The price breakdown is no longer available for this trade.">
-        {txn.netAmountPkr ? <Row label={total} value={pkr(txn.netAmountPkr)} strong /> : null}
-      </Section>
+      <>
+        {txn.netAmountPkr ? <Rows items={[]} total={[total, pkr(txn.netAmountPkr)]} /> : null}
+        <p className="mt-2 text-xs text-ink-soft">
+          The price breakdown is no longer available for this trade.
+        </p>
+      </>
     );
   }
   return (
-    <Section
-      title="Price"
-      note={`Price fixed when you asked for it, ${fullDate(quote.createdAt)}: gold ${usd(quote.price.xauUsd)} per troy ounce, US$ 1 = ${pkr(quote.price.usdPkr)}.`}
-    >
-      <Row label="Price per gram" value={pkr(quote.price.pricePerGramPkr)} />
-      <Row label="Gold value" value={pkr(quote.grossAmountPkr)} />
-      <Row
-        label="Exchange margin"
-        value={`${kind === "buy" ? "+" : "−"} ${pkr(quote.fees.fxMarginPkr)}`}
-      />
-      <Row label={total} value={pkr(quote.netAmountPkr)} strong />
-    </Section>
-  );
-}
-
-function Section({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
-  return (
-    <section className="space-y-2">
-      <h2 className="text-xs font-semibold tracking-widest text-ink-soft uppercase">{title}</h2>
-      <dl className="space-y-2">{children}</dl>
-      {note ? <p className="pt-1 text-xs text-ink-soft">{note}</p> : null}
-    </section>
-  );
-}
-
-function Row({ label, value, strong }: { label: string; value: ReactNode; strong?: boolean }) {
-  return (
-    <div
-      className={`flex justify-between gap-4 text-sm ${strong ? "border-t border-line pt-2 text-base font-semibold" : ""}`}
-    >
-      <dt className={strong ? "" : "text-ink-soft"}>{label}</dt>
-      <dd className="text-right">{value}</dd>
-    </div>
+    <Rows
+      items={[
+        ["Price per gram", pkr(quote.price.pricePerGramPkr)],
+        [kind === "buy" ? "Gold value" : "Sale value", pkr(quote.grossAmountPkr)],
+        ["Exchange margin", `${kind === "buy" ? "+" : "−"} ${pkr(quote.fees.fxMarginPkr)}`],
+      ]}
+      total={[total, pkr(quote.netAmountPkr)]}
+    />
   );
 }

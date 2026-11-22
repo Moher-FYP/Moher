@@ -1,4 +1,4 @@
-# Demo partners: Moher Bank and Moher Wallet
+# Demo partners: MOHAR Bank and MOHAR Wallet
 
 Two mock Pakistani partners that offer **Gold Savings** to their customers by integrating
 MOHAR through `@mohar/sdk`: a retail bank and a mobile wallet. They are one app run twice, to
@@ -7,8 +7,8 @@ partner, and the partner never touches blockchain details. Both names are invent
 
 | Partner      | Run               | Port | MOHAR partner  | New customers open at |
 | ------------ | ----------------- | ---- | -------------- | --------------------- |
-| Moher Bank   | `pnpm dev`        | 3000 | `demo-bank`    | standard KYC          |
-| Moher Wallet | `pnpm dev:wallet` | 3001 | `moher-wallet` | asaan (basic) KYC     |
+| MOHAR Bank   | `pnpm dev`        | 3000 | `demo-bank`    | standard KYC          |
+| MOHAR Wallet | `pnpm dev:wallet` | 3001 | `moher-wallet` | asaan (basic) KYC     |
 
 `DEMO_PARTNER=wallet` picks the wallet; anything else is the bank. Each has its own API key,
 webhook secret, session cookie and customers.
@@ -20,8 +20,8 @@ pnpm chain                                    # local blockchain
 pnpm contracts:deploy:local                   # contracts (after every chain restart)
 pnpm --filter @mohar/sdk build
 pnpm --filter @mohar/api dev                  # MOHAR API on :4000
-pnpm --filter @mohar/demo-bank dev            # Moher Bank on :3000
-pnpm --filter @mohar/demo-bank dev:wallet     # Moher Wallet on :3001
+pnpm --filter @mohar/demo-bank dev            # MOHAR Bank on :3000
+pnpm --filter @mohar/demo-bank dev:wallet     # MOHAR Wallet on :3001
 ```
 
 Open either, and sign in as a persona (bank: Hassan, Bushra; wallet: Aliya, Kamran) or open a
@@ -51,17 +51,31 @@ repeat), the customer-to-wallet mapping, and how each trade was paid.
 
 ## Screens
 
-| Screen                 | What it shows                                                                  |
-| ---------------------- | ------------------------------------------------------------------------------ |
-| Sign in                | Pick a persona, or open a new account. Gold Savings registers a MOHAR wallet.  |
-| Open an account        | The partner's KYC, simulated: CNIC, screening, risk band, then the outcome.    |
-| Home                   | Gold balance in grams and rupees, the price per gram, recent activity.         |
-| Buy gold               | Spend from Rs 100, paid from the partner account or by Raast (simulated).      |
-| Sell gold              | Sell any amount, or everything.                                                |
-| Send gold              | Move gold to another customer.                                                 |
-| Transaction            | Live status while the trade settles; a plain explanation if it is cancelled.   |
-| Receipt                | Printable receipt for a settled trade: grams, price, margin, ledger reference. |
-| Your gold in the vault | Proof-of-Reserve, plus an on-chain check of this customer's own gold.          |
+Every screen follows the design canvas (MOHAR Bank / MOHAR Wallet, 21 boards) and is built from
+one kit of parts, `src/components/kit.tsx`, one part for each part on the canvas's Components
+board. A partner changes only three colours (`colors` in `src/lib/partner.ts`): its primary
+button, the text on it and its hero tint. The bank is ink black on sand; the wallet is seal
+orange on apricot. Type is Archivo (figures and titles), Instrument Sans (text) and DM Serif
+Display (the MOHAR wordmark).
+
+| Screen            | What it shows                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| Sign in           | Pick a persona, or open a new account. Gold Savings registers a MOHAR wallet.        |
+| Open an account   | The partner's KYC in two steps, simulated: identity, then savings; then the outcome. |
+| Home              | The gold card (grams, rupees, tola, price), Buy / Sell / Send, the vault, activity.  |
+| Buy gold          | Amount on the app's own number pad, quick amounts, the estimate in grams.            |
+| Review            | Exact grams and charges, the held-price timer, pay from the account or by Raast.     |
+| Settling          | Live steps while the trade settles; the screen turns into Done or Cancelled.         |
+| Done              | The new balance and the ledger reference.                                            |
+| Cancelled         | Why (in plain words), and that nothing was charged.                                  |
+| Receipt           | Printable receipt for a settled trade: grams, price, margin, ledger reference.       |
+| Sell gold         | In grams or in rupees, or everything.                                                |
+| Send gold         | Move gold to another customer of the same partner.                                   |
+| Gold in the vault | Proof-of-Reserve, a backing meter, and an on-chain check of this customer's gold.    |
+
+Money and gold are typed on the app's own pad (a laptop keyboard works too), so the figure is
+never hidden behind a phone keyboard. Only Gold in the bottom tab bar works: the other tabs show
+that Gold Savings lives inside a bigger banking app.
 
 The right-hand **Behind the scenes** panel lists every SDK call the bank's server makes and
 every signed webhook MOHAR sends back. It also has a price control for the slippage demo: get a
