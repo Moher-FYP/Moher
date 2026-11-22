@@ -76,14 +76,17 @@ describe("hash-chained logs", () => {
     for (let i = 0; i < 5; i += 1) store.log("audit", { action: `a${i}`, result: "ok" });
     expect(store.verifyLog("audit")).toEqual({ intact: true, entries: 5 });
 
-    store.rawLog("audit")[2]!.action = "edited";
+    // Someone edits entry 3 in the database file.
+    store.unsafeSqlForTests(
+      "UPDATE log_entries SET data = json_set(data, '$.action', 'edited') WHERE log = 'audit' AND seq = 3",
+    );
     expect(store.verifyLog("audit")).toMatchObject({ intact: false, firstBrokenSeq: 3 });
   });
 
   it("notices a deleted entry", () => {
     const store = new PortalStore(null);
     for (let i = 0; i < 4; i += 1) store.log("security", { action: `s${i}`, result: "ok" });
-    store.rawLog("security").splice(1, 1);
+    store.unsafeSqlForTests("DELETE FROM log_entries WHERE log = 'security' AND seq = 2");
     expect(store.verifyLog("security")).toMatchObject({ intact: false, firstBrokenSeq: 3 });
   });
 });

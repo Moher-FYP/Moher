@@ -103,13 +103,16 @@ export async function bootstrap(config: Config): Promise<AppContext> {
     );
   }
 
+  // SQLite files in DATA_DIR (store/sqlite.ts). The JSON files used before are imported once.
+  const memory = config.DATA_DIR === ":memory:";
   const store = new Store(
-    config.DATA_DIR === ":memory:"
-      ? null
-      : join(config.DATA_DIR, `store-${deployment.chainId}.json`),
+    memory ? null : join(config.DATA_DIR, `store-${deployment.chainId}.db`),
+    memory ? undefined : join(config.DATA_DIR, `store-${deployment.chainId}.json`),
   );
-  const { reset } = store.open(await chain.chainMarker());
+  const { reset, imported } = store.open(await chain.chainMarker());
   if (reset) console.log("Started a fresh store for this chain.");
+  if (imported !== undefined)
+    console.log(`Moved ${imported} records from the old JSON store into SQLite.`);
 
   // The partner portal: its own store (users, keys, logs, deliveries), and settings partners
   // changed there, applied over the start-up configuration before anything is sent.
@@ -117,7 +120,9 @@ export async function bootstrap(config: Config): Promise<AppContext> {
     .map((o) => o.trim())
     .filter(Boolean);
   const portalStore = new PortalStore(
-    config.DATA_DIR === ":memory:" ? null : join(config.DATA_DIR, "portal.json"),
+    memory ? null : join(config.DATA_DIR, "portal.db"),
+    undefined,
+    memory ? undefined : join(config.DATA_DIR, "portal.json"),
   );
   const sealer = new Sealer(portalSecretKey ?? LOCAL_ONLY.portalSecretKey);
   applyPortalSettings(partners, portalStore, sealer);

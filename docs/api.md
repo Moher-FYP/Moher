@@ -79,24 +79,24 @@ POST /v1/mints ─▶ checks (quote valid, wallet active, minting not paused) �
    signed webhook → partner
 ```
 
-| Part            | File                         | Notes                                                                                                                                                                                                                                                   |
-| --------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pricing         | `src/domain/pricing.ts`      | bigint only. Buy: customer pays gold value + FX margin (0.25%). Sell: receives value − margin. Platform fee (0.50%) is billed to the partner. Rounding favours the reserve.                                                                             |
-| Oracle          | `src/services/price.ts`      | Reads `MoharToken.latestPrice()`, so the API applies the same staleness rule as the contract. A keeper refreshes the mock feed like Chainlink's heartbeat and can mirror a real feed into it.                                                           |
-| Mock vault      | `src/vault/mock-vault.ts`    | Allocation book per wallet, EIP-712 signing, Merkle tree (OpenZeppelin `merkle-tree`). Counts an allocation when it signs; releases a de-allocation only after the burn confirms.                                                                       |
-| Settlement      | `src/services/settlement.ts` | Async worker on a serial queue (single relayer nonce). Publishes the reserve after every confirmed trade.                                                                                                                                               |
-| Chain           | `src/chain/mohar-chain.ts`   | viem. ABIs in `abis.ts` are generated from Foundry output — `pnpm --filter @mohar/api abi`.                                                                                                                                                             |
-| Idempotency     | `src/http/idempotency.ts`    | Same key + body replays the response; a different body is a 409.                                                                                                                                                                                        |
-| Quotes          | `src/http/routes.ts`         | One quote settles once. `claimQuote` re-checks the quote and marks it used with no `await` in between, so two requests arriving together cannot both execute it; the second gets a 409.                                                                 |
-| Secrets         | `src/secrets.ts`             | The repo's default API key, webhook secret and operator key are public, so start-up refuses them (and anything short or shared) on every chain but local Anvil. Each partner signs with its own webhook secret.                                         |
-| KYC fingerprint | `src/domain/kyc.ts`          | What goes on-chain with a wallet is an HMAC of the partner's KYC reference under `KYC_HASH_SECRET`, not a plain hash, so it cannot be reversed by guessing the reference.                                                                               |
-| KYC limits      | `src/domain/kyc-limits.ts`   | Money into a wallet (a purchase, or gold sent to it) over its KYC level's limits, per trade, 24 hours, 30 days or the most it may hold, is refused with 422 `limit_exceeded`, checked again inside the claim. See `docs/kyc-limits.md`.                 |
-| Price controls  | `src/http/routes.ts`         | `/dev/price` needs the operator key (`DEV_API_KEY`), never a partner key, and a manual price must stay within `DEV_PRICE_BAND_BPS` of the reference price.                                                                                              |
-| Limits          | `src/http/rate-limit.ts`     | Per partner: requests per minute, and a smaller allowance of new wallets per hour (each costs gas). Over the limit is a 429 with `Retry-After`.                                                                                                         |
-| Reserve proofs  | `src/services/settlement.ts` | Combined: one proof is published after the trades already waiting have settled, and at most once per `RESERVE_PUBLISH_INTERVAL_SECONDS` (default 0). Measured on Anvil: 331,235 gas for a purchase on its own, 154,491 per purchase in a burst of five. |
-| Recovery        | `src/services/settlement.ts` | On start, `recover()` settles trades the last run left unfinished: never sent → failed; sent → as the chain says; no receipt yet → left for the next start.                                                                                             |
-| Store           | `src/store/store.ts`         | JSON file in `api/.data/`, reset automatically when the local chain restarts. Swap for Postgres before a real deployment.                                                                                                                               |
-| Webhooks        | `src/services/webhooks.ts`   | Signed with the SDK's own helper. Failed deliveries are saved and retried for 3 days (1 min, 5 min, 30 min, 2 h, 6 h, 12 h, then daily, with jitter), also after a restart; recorded for the portal's delivery log.                                     |
+| Part            | File                         | Notes                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pricing         | `src/domain/pricing.ts`      | bigint only. Buy: customer pays gold value + FX margin (0.25%). Sell: receives value − margin. Platform fee (0.50%) is billed to the partner. Rounding favours the reserve.                                                                                                                                                                                            |
+| Oracle          | `src/services/price.ts`      | Reads `MoharToken.latestPrice()`, so the API applies the same staleness rule as the contract. A keeper refreshes the mock feed like Chainlink's heartbeat and can mirror a real feed into it.                                                                                                                                                                          |
+| Mock vault      | `src/vault/mock-vault.ts`    | Allocation book per wallet, EIP-712 signing, Merkle tree (OpenZeppelin `merkle-tree`). Counts an allocation when it signs; releases a de-allocation only after the burn confirms.                                                                                                                                                                                      |
+| Settlement      | `src/services/settlement.ts` | Async worker on a serial queue (single relayer nonce). Publishes the reserve after every confirmed trade.                                                                                                                                                                                                                                                              |
+| Chain           | `src/chain/mohar-chain.ts`   | viem. ABIs in `abis.ts` are generated from Foundry output — `pnpm --filter @mohar/api abi`.                                                                                                                                                                                                                                                                            |
+| Idempotency     | `src/http/idempotency.ts`    | Same key + body replays the response; a different body is a 409.                                                                                                                                                                                                                                                                                                       |
+| Quotes          | `src/http/routes.ts`         | One quote settles once. `claimQuote` re-checks the quote and marks it used with no `await` in between, so two requests arriving together cannot both execute it; the second gets a 409.                                                                                                                                                                                |
+| Secrets         | `src/secrets.ts`             | The repo's default API key, webhook secret and operator key are public, so start-up refuses them (and anything short or shared) on every chain but local Anvil. Each partner signs with its own webhook secret.                                                                                                                                                        |
+| KYC fingerprint | `src/domain/kyc.ts`          | What goes on-chain with a wallet is an HMAC of the partner's KYC reference under `KYC_HASH_SECRET`, not a plain hash, so it cannot be reversed by guessing the reference.                                                                                                                                                                                              |
+| KYC limits      | `src/domain/kyc-limits.ts`   | Money into a wallet (a purchase, or gold sent to it) over its KYC level's limits, per trade, 24 hours, 30 days or the most it may hold, is refused with 422 `limit_exceeded`, checked again inside the claim. See `docs/kyc-limits.md`.                                                                                                                                |
+| Price controls  | `src/http/routes.ts`         | `/dev/price` needs the operator key (`DEV_API_KEY`), never a partner key, and a manual price must stay within `DEV_PRICE_BAND_BPS` of the reference price.                                                                                                                                                                                                             |
+| Limits          | `src/http/rate-limit.ts`     | Per partner: requests per minute, and a smaller allowance of new wallets per hour (each costs gas). Over the limit is a 429 with `Retry-After`.                                                                                                                                                                                                                        |
+| Reserve proofs  | `src/services/settlement.ts` | Combined: one proof is published after the trades already waiting have settled, and at most once per `RESERVE_PUBLISH_INTERVAL_SECONDS` (default 0). Measured on Anvil: 331,235 gas for a purchase on its own, 154,491 per purchase in a burst of five.                                                                                                                |
+| Recovery        | `src/services/settlement.ts` | On start, `recover()` settles trades the last run left unfinished: never sent → failed; sent → as the chain says; no receipt yet → left for the next start.                                                                                                                                                                                                            |
+| Store           | `src/store/store.ts`         | SQLite (Node's built-in `node:sqlite`): `api/.data/store-<chainId>.db` for trading, `portal.db` for the portal. Every read goes to the file and every write is a transaction, so the API, `simulate` and `portal:user` can run at once. The trading database empties itself when the local chain restarts. Older JSON files are imported once and kept as `.imported`. |
+| Webhooks        | `src/services/webhooks.ts`   | Signed with the SDK's own helper. Failed deliveries are saved and retried for 3 days (1 min, 5 min, 30 min, 2 h, 6 h, 12 h, then daily, with jitter), also after a restart; recorded for the portal's delivery log.                                                                                                                                                    |
 
 Custodial wallets are derived from `WALLET_MNEMONIC` (`m/44'/60'/1'/0/i`); customers never hold
 keys or gas.
@@ -151,7 +151,7 @@ random walk with 18% yearly volatility and ends at the live price, quotes that e
 the price band more often on volatile days, and settlement times around 2.4 s. The same seed
 always gives the same history.
 
-It cannot be confused with real data: it runs only against chain 31337 with the API stopped;
+It cannot be confused with real data: it runs only against chain 31337;
 the partner's slug must start `sim-`; every record carries `simulated: true`; the store refuses
 simulated records for a partner that has real ones, and real ones are never cleared; and a
 `sim-` partner's portal users can only be viewers. The analytics say `simulated: true`, and the
@@ -159,7 +159,7 @@ portal shows a banner.
 
 A MOHAR operator adds, unlocks, locks and resets portal users on the portal's operator page
 (`/portal/v1/admin/users`); a new or reset user's password and QR code are shown once. The very
-first operator is added from the terminal, with the API stopped (it would overwrite the file):
+first operator is added from the terminal (the API may keep running):
 
 ```bash
 pnpm --filter @mohar/api portal:user add --email dev@demo-bank.test --role developer --partner demo-bank
@@ -168,6 +168,32 @@ pnpm --filter @mohar/api portal:user list
 
 The new user's password, a QR code for the authenticator app and the setup key are printed once, to that terminal only. On
 Amoy, prefix the command with `DOTENV_CONFIG_PATH=.env.amoy`, as for the API.
+
+## Database
+
+The API keeps its records in SQLite through Node's built-in `node:sqlite` (Node 22.13 or
+later): no package to install and no server to run. There are two files in `DATA_DIR`
+(`api/.data/`): `store-<chainId>.db` (wallets, quotes, transactions, idempotency keys; emptied
+when a local chain restarts) and `portal.db` (portal users, sessions, API keys, webhook
+deliveries, freeze requests, anchors and the two logs; kept across chains, readable by its owner
+only). `DATA_DIR=:memory:` keeps both in memory (tests).
+
+Why not the JSON files it replaced: the API held the whole file in memory and wrote it back
+after every change, so a second process (the simulator, `portal:user`) had to wait for the API
+to stop, or whichever saved last silently erased the other's work. Now every read goes to the
+file and every write is a transaction, so all three can run at once and each sees the others'
+changes immediately. Read-then-write steps (the next derivation index, the next log entry,
+simulated history) take the write lock first (`BEGIN IMMEDIATE`), so two processes can never
+both hand out the same index or log sequence number.
+
+Each record is stored as JSON in a `data` column, with the fields that queries filter or sort
+on copied into indexed columns (`partner_slug`, `created_at`, `status`, …). The record types in
+`src/domain/types.ts` stay the one definition of a record, and the lookups run on indexes. The
+database also enforces what the code assumed: one wallet per address and per partner customer.
+JSON files from before are imported once on start and renamed `.imported`.
+
+For a hosted deployment with more than one API process, the same tables move to PostgreSQL;
+nothing outside `src/store/` and `src/portal/portal-store.ts` reads them.
 
 ## Tests
 

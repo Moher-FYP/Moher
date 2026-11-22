@@ -1,4 +1,3 @@
-import { createConnection } from "node:net";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { generatePrivateKey } from "viem/accounts";
@@ -11,8 +10,8 @@ import { isSimulatedPartner, simulateHistory, SIMULATED_PREFIX } from "./simulat
 
 /**
  * Writes a simulated history for a "sim-" partner into the API's store, so the portal's
- * overview and trading pages have months of activity to show. Run it with the chain up and
- * the API stopped (the API keeps the store in memory and would overwrite the change):
+ * overview and trading pages have months of activity to show. Run it with the chain up; the
+ * API may keep running, since both use the same SQLite database (store/sqlite.ts):
  *
  *   pnpm --filter @mohar/api simulate --partner sim-bank
  *   pnpm --filter @mohar/api simulate --partner sim-bank --savers 300 --days 90 --seed 7
@@ -45,12 +44,6 @@ async function main(): Promise<void> {
   const savers = positive("savers", values.savers!, 5_000);
   const days = positive("days", values.days!, 365);
   const seed = positive("seed", values.seed!, 2 ** 31);
-  if (await apiIsRunning()) {
-    fail(
-      `The API is running on port ${config.PORT}. Stop it first: it keeps the store in memory ` +
-        "and would overwrite this change when it next saves.",
-    );
-  }
   if (config.DATA_DIR === ":memory:") fail("DATA_DIR is :memory:, so there is no store to write");
 
   const deployment = loadDeployment(config.DEPLOYMENT_FILE);
@@ -62,7 +55,11 @@ async function main(): Promise<void> {
   const marker = await chain.chainMarker().catch(() => {
     fail(`Cannot reach the chain at ${config.RPC_URL}. Is \`pnpm chain\` running?`);
   });
-  const store = new Store(join(config.DATA_DIR, `store-${deployment.chainId}.json`));
+  // The same SQLite file the API uses; safe while the API runs (store/sqlite.ts).
+  const store = new Store(
+    join(config.DATA_DIR, `store-${deployment.chainId}.db`),
+    join(config.DATA_DIR, `store-${deployment.chainId}.json`),
+  );
   store.open(marker);
 
   const removed = store.clearSimulated(partner);
@@ -98,22 +95,6 @@ function positive(name: string, text: string, max: number): number {
   const n = Number(text);
   if (!Number.isInteger(n) || n < 1 || n > max) fail(`--${name}: a whole number from 1 to ${max}`);
   return n;
-}
-
-function apiIsRunning(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = createConnection({ host: config.HOST, port: config.PORT });
-    socket.setTimeout(500);
-    socket.once("connect", () => {
-      socket.destroy();
-      resolve(true);
-    });
-    socket.once("error", () => resolve(false));
-    socket.once("timeout", () => {
-      socket.destroy();
-      resolve(false);
-    });
-  });
 }
 
 function fail(message: string): never {

@@ -1,4 +1,3 @@
-import { createConnection } from "node:net";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import QRCode from "qrcode";
@@ -46,19 +45,18 @@ async function main(): Promise<void> {
   if (!command || !["add", "list", "enable", "disable", "reset"].includes(command)) {
     fail("Use one of: add, list, enable, disable, reset (see the top of src/portal/cli.ts)");
   }
-  if (await apiIsRunning()) {
-    fail(
-      `The API is running on port ${config.PORT}. Stop it first: it keeps the portal file in ` +
-        "memory and would overwrite this change when it next saves.",
-    );
-  }
   if (!config.PORTAL_SECRET_KEY) {
     console.warn(
       "PORTAL_SECRET_KEY is not set: using the public local default (local Anvil only).",
     );
   }
   const sealer = new Sealer(config.PORTAL_SECRET_KEY ?? LOCAL_ONLY.portalSecretKey);
-  const store = new PortalStore(join(config.DATA_DIR, "portal.json"));
+  // The same SQLite file the API uses; safe while the API runs (store/sqlite.ts).
+  const store = new PortalStore(
+    join(config.DATA_DIR, "portal.db"),
+    undefined,
+    join(config.DATA_DIR, "portal.json"),
+  );
   const audit = (action: string, email: string, partner?: string) =>
     store.log("audit", { email, partner, action, result: "ok", detail: { by: "cli" } });
 
@@ -170,22 +168,6 @@ ${qr}
 
   Never paste the setup key, the QR code or the password into chat, email or a document.
 `);
-}
-
-function apiIsRunning(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = createConnection({ host: config.HOST, port: config.PORT });
-    socket.setTimeout(500);
-    socket.once("connect", () => {
-      socket.destroy();
-      resolve(true);
-    });
-    socket.once("error", () => resolve(false));
-    socket.once("timeout", () => {
-      socket.destroy();
-      resolve(false);
-    });
-  });
 }
 
 function fail(message: string): never {

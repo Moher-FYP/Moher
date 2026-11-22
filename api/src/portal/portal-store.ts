@@ -1,12 +1,6 @@
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-
-/**
- * Portal records: users, sessions, and the two logs. Kept apart from the trading store because
- * the trading store starts fresh when the chain does, and portal users and their history must
- * not vanish with a new Anvil chain. Same write-through JSON approach as store/store.ts.
- */
+import { existsSync, readFileSync, renameSync } from "node:fs";
+import { col, openDatabase, record, records, transaction, type Database } from "../store/sqlite.js";
 
 export type PortalRole = "viewer" | "developer" | "compliance" | "operator";
 
@@ -131,263 +125,397 @@ export interface LogEntry extends LogInput {
   hash: string;
 }
 
-interface State {
-  version: 1;
-  users: Record<string, PortalUserRecord>;
-  sessions: Record<string, SessionRecord>;
-  logs: Record<LogName, LogEntry[]>;
-  apiKeys: Record<string, ApiKeyRecord>;
-  partnerSettings: Record<string, PartnerSettings>;
-  deliveries: WebhookDelivery[];
-  freezeRequests: Record<string, FreezeRequest>;
-  anchors: AnchorRecord[];
+/** The JSON file this store replaced (`portal.json`), imported once if it is found. */
+interface LegacyState {
+  users?: Record<string, PortalUserRecord>;
+  sessions?: Record<string, SessionRecord>;
+  logs?: Partial<Record<LogName, LogEntry[]>>;
+  apiKeys?: Record<string, ApiKeyRecord>;
+  partnerSettings?: Record<string, PartnerSettings>;
+  deliveries?: WebhookDelivery[];
+  freezeRequests?: Record<string, FreezeRequest>;
+  anchors?: AnchorRecord[];
 }
 
 /** Each log keeps its newest entries; a real deployment ships them to separate storage. */
 export const LOG_CAP = 10_000;
 const GENESIS = "0".repeat(64);
 
-const emptyState = (): State => ({
-  version: 1,
-  users: {},
-  sessions: {},
-  logs: { audit: [], security: [] },
-  apiKeys: {},
-  partnerSettings: {},
-  deliveries: [],
-  freezeRequests: {},
-  anchors: [],
-});
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  id    TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  data  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL,
+  data       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id);
+CREATE TABLE IF NOT EXISTS api_keys (
+  id           TEXT PRIMARY KEY,
+  partner_slug TEXT NOT NULL,
+  hash         TEXT NOT NULL,
+  revoked      INTEGER NOT NULL,
+  created_at   TEXT NOT NULL,
+  data         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS api_keys_hash ON api_keys (hash);
+CREATE TABLE IF NOT EXISTS partner_settings (
+  slug TEXT PRIMARY KEY,
+  data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS deliveries (
+  ord             INTEGER PRIMARY KEY AUTOINCREMENT,
+  id              TEXT NOT NULL UNIQUE,
+  partner_slug    TEXT NOT NULL,
+  transaction_id  TEXT NOT NULL,
+  status          TEXT NOT NULL,
+  next_attempt_at TEXT,
+  data            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS deliveries_partner ON deliveries (partner_slug, transaction_id);
+CREATE INDEX IF NOT EXISTS deliveries_due ON deliveries (status, next_attempt_at);
+CREATE TABLE IF NOT EXISTS freeze_requests (
+  id           TEXT PRIMARY KEY,
+  partner_slug TEXT NOT NULL,
+  requested_at TEXT NOT NULL,
+  data         TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS anchors (
+  ord  INTEGER PRIMARY KEY AUTOINCREMENT,
+  data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS log_entries (
+  log     TEXT NOT NULL,
+  seq     INTEGER NOT NULL,
+  partner TEXT,
+  data    TEXT NOT NULL,
+  PRIMARY KEY (log, seq)
+);
+CREATE INDEX IF NOT EXISTS log_entries_partner ON log_entries (log, partner, seq);
+`;
 
+/**
+ * Portal records: users, sessions, API keys, webhook deliveries, freeze requests and the two
+ * hash-chained logs, in SQLite (store/sqlite.ts says why). Kept apart from the trading store
+ * (`portal.db`, not `store-<chainId>.db`) because the trading store starts fresh when the
+ * chain does, and portal users and their history must not vanish with a new Anvil chain.
+ * Pass `null` as the path for an in-memory database (tests).
+ */
 export class PortalStore {
-  private state: State = emptyState();
+  private readonly db: Database;
 
   constructor(
-    private readonly filePath: string | null,
+    path: string | null,
     private readonly now: () => Date = () => new Date(),
+    legacyJsonPath?: string,
   ) {
-    if (filePath) {
-      try {
-        // Files from part 1 lack the later collections; start those empty.
-        this.state = { ...emptyState(), ...(JSON.parse(readFileSync(filePath, "utf8")) as State) };
-      } catch {
-        this.persist();
-      }
-    }
+    this.db = openDatabase(path, { private: true });
+    this.db.exec(SCHEMA);
+    if (legacyJsonPath) this.importLegacy(legacyJsonPath);
+  }
+
+  /** Closes the database file (CLIs, before they exit). */
+  close(): void {
+    this.db.close();
   }
 
   // ---------------------------------------------------------------- users
 
   saveUser(user: PortalUserRecord): void {
-    this.state.users[user.id] = user;
-    this.persist();
+    this.db
+      .prepare(
+        `INSERT INTO users (id, email, data) VALUES (?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET email = excluded.email, data = excluded.data`,
+      )
+      .run(user.id, user.email, JSON.stringify(user));
   }
 
   getUser(id: string): PortalUserRecord | undefined {
-    return this.state.users[id];
+    return record(this.db.prepare("SELECT data FROM users WHERE id = ?").get(id));
   }
 
   findUserByEmail(email: string): PortalUserRecord | undefined {
-    const wanted = email.trim().toLowerCase();
-    return Object.values(this.state.users).find((u) => u.email === wanted);
+    return record(
+      this.db.prepare("SELECT data FROM users WHERE email = ?").get(email.trim().toLowerCase()),
+    );
   }
 
   allUsers(): PortalUserRecord[] {
-    return Object.values(this.state.users);
+    return records(this.db.prepare("SELECT data FROM users ORDER BY rowid").all());
   }
 
   updateUser(id: string, patch: Partial<PortalUserRecord>): PortalUserRecord {
-    const existing = this.state.users[id];
-    if (!existing) throw new Error(`Unknown portal user ${id}`);
-    const updated = { ...existing, ...patch };
-    this.state.users[id] = updated;
-    this.persist();
-    return updated;
+    return transaction(this.db, () => {
+      const existing = this.getUser(id);
+      if (!existing) throw new Error(`Unknown portal user ${id}`);
+      const updated = { ...existing, ...patch };
+      this.saveUser(updated);
+      return updated;
+    });
   }
 
   // ---------------------------------------------------------------- sessions
 
   saveSession(session: SessionRecord): void {
-    this.state.sessions[session.tokenHash] = session;
-    this.persist();
+    this.db
+      .prepare(
+        `INSERT INTO sessions (token_hash, user_id, data) VALUES (?, ?, ?)
+         ON CONFLICT (token_hash) DO UPDATE SET user_id = excluded.user_id, data = excluded.data`,
+      )
+      .run(session.tokenHash, session.userId, JSON.stringify(session));
   }
 
   getSession(tokenHash: string): SessionRecord | undefined {
-    return this.state.sessions[tokenHash];
+    return record(this.db.prepare("SELECT data FROM sessions WHERE token_hash = ?").get(tokenHash));
   }
 
-  /** Records activity. Not persisted on every request; the next real write saves it. */
+  /** Records activity on a session (for the idle timeout). */
   touchSession(tokenHash: string, at: string): void {
-    const session = this.state.sessions[tokenHash];
-    if (session) session.lastSeenAt = at;
+    this.db
+      .prepare("UPDATE sessions SET data = json_set(data, '$.lastSeenAt', ?) WHERE token_hash = ?")
+      .run(at, tokenHash);
   }
 
   deleteSession(tokenHash: string): void {
-    delete this.state.sessions[tokenHash];
-    this.persist();
+    this.db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(tokenHash);
   }
 
   /** Ends every session of a user (after a disable, or a password change). */
   deleteSessionsOf(userId: string): void {
-    for (const [hash, session] of Object.entries(this.state.sessions)) {
-      if (session.userId === userId) delete this.state.sessions[hash];
-    }
-    this.persist();
+    this.db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
   }
 
-  /** Drops sessions that have ended, so the file does not grow without limit. */
+  /** Drops sessions that have ended, so the table does not grow without limit. */
   pruneSessions(isLive: (s: SessionRecord) => boolean): void {
-    let changed = false;
-    for (const [hash, session] of Object.entries(this.state.sessions)) {
-      if (!isLive(session)) {
-        delete this.state.sessions[hash];
-        changed = true;
-      }
-    }
-    if (changed) this.persist();
+    transaction(this.db, () => {
+      const all = records<SessionRecord>(this.db.prepare("SELECT data FROM sessions").all());
+      const drop = this.db.prepare("DELETE FROM sessions WHERE token_hash = ?");
+      for (const session of all) if (!isLive(session)) drop.run(session.tokenHash);
+    });
   }
 
   // ---------------------------------------------------------------- API keys
 
   saveApiKey(key: ApiKeyRecord): void {
-    this.state.apiKeys[key.id] = key;
-    this.persist();
+    this.db
+      .prepare(
+        `INSERT INTO api_keys (id, partner_slug, hash, revoked, created_at, data) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET partner_slug = excluded.partner_slug, hash = excluded.hash,
+           revoked = excluded.revoked, created_at = excluded.created_at, data = excluded.data`,
+      )
+      .run(
+        key.id,
+        key.partnerSlug,
+        key.hash,
+        col(Boolean(key.revokedAt)),
+        key.createdAt,
+        JSON.stringify(key),
+      );
   }
 
   getApiKey(id: string): ApiKeyRecord | undefined {
-    return this.state.apiKeys[id];
+    return record(this.db.prepare("SELECT data FROM api_keys WHERE id = ?").get(id));
   }
 
   apiKeysOf(partnerSlug: string): ApiKeyRecord[] {
-    return Object.values(this.state.apiKeys)
-      .filter((k) => k.partnerSlug === partnerSlug)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return records(
+      this.db
+        .prepare("SELECT data FROM api_keys WHERE partner_slug = ? ORDER BY created_at DESC")
+        .all(partnerSlug),
+    );
   }
 
   /** The live (not revoked) key with this hash. */
   findLiveKeyByHash(hash: string): ApiKeyRecord | undefined {
-    return Object.values(this.state.apiKeys).find((k) => k.hash === hash && !k.revokedAt);
+    return record(
+      this.db.prepare("SELECT data FROM api_keys WHERE hash = ? AND revoked = 0").get(hash),
+    );
   }
 
-  updateApiKey(id: string, patch: Partial<ApiKeyRecord>, persist = true): void {
-    const existing = this.state.apiKeys[id];
-    if (!existing) throw new Error(`Unknown API key ${id}`);
-    this.state.apiKeys[id] = { ...existing, ...patch };
-    if (persist) this.persist();
+  updateApiKey(id: string, patch: Partial<ApiKeyRecord>): void {
+    transaction(this.db, () => {
+      const existing = this.getApiKey(id);
+      if (!existing) throw new Error(`Unknown API key ${id}`);
+      this.saveApiKey({ ...existing, ...patch });
+    });
   }
 
   // ---------------------------------------------------------------- partner settings
 
   partnerSettings(slug: string): PartnerSettings {
-    return this.state.partnerSettings[slug] ?? {};
+    return (
+      record<PartnerSettings>(
+        this.db.prepare("SELECT data FROM partner_settings WHERE slug = ?").get(slug),
+      ) ?? {}
+    );
   }
 
   allPartnerSettings(): Record<string, PartnerSettings> {
-    return this.state.partnerSettings;
+    const rows = this.db.prepare("SELECT slug, data FROM partner_settings").all();
+    return Object.fromEntries(
+      rows.map((row) => [String(row.slug), JSON.parse(String(row.data)) as PartnerSettings]),
+    );
   }
 
   updatePartnerSettings(slug: string, patch: PartnerSettings): void {
-    this.state.partnerSettings[slug] = { ...this.partnerSettings(slug), ...patch };
-    this.persist();
+    transaction(this.db, () => {
+      const updated = { ...this.partnerSettings(slug), ...patch };
+      this.db
+        .prepare(
+          `INSERT INTO partner_settings (slug, data) VALUES (?, ?)
+           ON CONFLICT (slug) DO UPDATE SET data = excluded.data`,
+        )
+        .run(slug, JSON.stringify(updated));
+    });
   }
 
   // ---------------------------------------------------------------- webhook deliveries
 
   saveDelivery(delivery: WebhookDelivery): void {
-    const at = this.state.deliveries.findIndex((d) => d.id === delivery.id);
-    if (at >= 0) this.state.deliveries[at] = delivery;
-    else this.state.deliveries.push(delivery);
-    if (this.state.deliveries.length > LOG_CAP) {
-      // Drop the oldest finished ones; a delivery still waiting to retry is kept.
-      let excess = this.state.deliveries.length - LOG_CAP;
-      this.state.deliveries = this.state.deliveries.filter(
-        (d) => d.status === "pending" || excess-- <= 0,
-      );
-    }
-    this.persist();
+    transaction(this.db, () => {
+      this.db
+        .prepare(
+          `INSERT INTO deliveries (id, partner_slug, transaction_id, status, next_attempt_at, data)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT (id) DO UPDATE SET status = excluded.status,
+             next_attempt_at = excluded.next_attempt_at, data = excluded.data`,
+        )
+        .run(
+          delivery.id,
+          delivery.partnerSlug,
+          delivery.transactionId,
+          delivery.status,
+          col(delivery.nextAttemptAt),
+          JSON.stringify(delivery),
+        );
+      // Over the cap: drop the oldest finished ones; a delivery still waiting to retry is kept.
+      const count = Number(this.db.prepare("SELECT count(*) AS n FROM deliveries").get()!.n);
+      if (count > LOG_CAP) {
+        this.db
+          .prepare(
+            `DELETE FROM deliveries WHERE ord IN (
+               SELECT ord FROM deliveries WHERE status != 'pending' ORDER BY ord LIMIT ?)`,
+          )
+          .run(count - LOG_CAP);
+      }
+    });
   }
 
   /** Pending deliveries whose next attempt is due (webhooks.ts sends them). */
   dueDeliveries(nowIso: string): WebhookDelivery[] {
-    return this.state.deliveries.filter(
-      (d) => d.status === "pending" && d.nextAttemptAt !== undefined && d.nextAttemptAt <= nowIso,
+    return records(
+      this.db
+        .prepare(
+          "SELECT data FROM deliveries WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY ord",
+        )
+        .all(nowIso),
     );
   }
 
   getDelivery(id: string): WebhookDelivery | undefined {
-    return this.state.deliveries.find((d) => d.id === id);
+    return record(this.db.prepare("SELECT data FROM deliveries WHERE id = ?").get(id));
   }
 
   /** Newest first. */
   deliveriesOf(partnerSlug: string, transactionId?: string): WebhookDelivery[] {
-    return this.state.deliveries
-      .filter(
-        (d) =>
-          d.partnerSlug === partnerSlug && (!transactionId || d.transactionId === transactionId),
-      )
-      .reverse();
+    return transactionId
+      ? records(
+          this.db
+            .prepare(
+              "SELECT data FROM deliveries WHERE partner_slug = ? AND transaction_id = ? ORDER BY ord DESC",
+            )
+            .all(partnerSlug, transactionId),
+        )
+      : records(
+          this.db
+            .prepare("SELECT data FROM deliveries WHERE partner_slug = ? ORDER BY ord DESC")
+            .all(partnerSlug),
+        );
   }
 
   // ---------------------------------------------------------------- freeze requests
 
   saveFreezeRequest(request: FreezeRequest): void {
-    this.state.freezeRequests[request.id] = request;
-    this.persist();
+    this.db
+      .prepare(
+        `INSERT INTO freeze_requests (id, partner_slug, requested_at, data) VALUES (?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET data = excluded.data`,
+      )
+      .run(request.id, request.partnerSlug, request.requestedAt, JSON.stringify(request));
   }
 
   getFreezeRequest(id: string): FreezeRequest | undefined {
-    return this.state.freezeRequests[id];
+    return record(this.db.prepare("SELECT data FROM freeze_requests WHERE id = ?").get(id));
   }
 
   /** Newest first; one partner's, or every partner's when no slug is given. */
   freezeRequests(partnerSlug?: string): FreezeRequest[] {
-    return Object.values(this.state.freezeRequests)
-      .filter((r) => !partnerSlug || r.partnerSlug === partnerSlug)
-      .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+    return partnerSlug
+      ? records(
+          this.db
+            .prepare(
+              "SELECT data FROM freeze_requests WHERE partner_slug = ? ORDER BY requested_at DESC",
+            )
+            .all(partnerSlug),
+        )
+      : records(
+          this.db.prepare("SELECT data FROM freeze_requests ORDER BY requested_at DESC").all(),
+        );
   }
 
   // ---------------------------------------------------------------- anchors
 
   saveAnchor(anchor: AnchorRecord): void {
-    this.state.anchors.push(anchor);
-    this.persist();
+    this.db.prepare("INSERT INTO anchors (data) VALUES (?)").run(JSON.stringify(anchor));
   }
 
   anchors(): AnchorRecord[] {
-    return this.state.anchors;
+    return records(this.db.prepare("SELECT data FROM anchors ORDER BY ord").all());
   }
 
   /** The newest entry's seq and hash (seq 0 and the zero hash for an empty log). */
   head(name: LogName): { seq: number; hash: string } {
-    const last = this.state.logs[name].at(-1);
+    const last = record<LogEntry>(
+      this.db
+        .prepare("SELECT data FROM log_entries WHERE log = ? ORDER BY seq DESC LIMIT 1")
+        .get(name),
+    );
     return last ? { seq: last.seq, hash: last.hash } : { seq: 0, hash: GENESIS };
   }
 
   /** The entry with this seq, if the log still holds it (old entries are capped away). */
   entry(name: LogName, seq: number): LogEntry | undefined {
-    return this.state.logs[name].find((e) => e.seq === seq);
+    return record(
+      this.db.prepare("SELECT data FROM log_entries WHERE log = ? AND seq = ?").get(name, seq),
+    );
   }
 
   // ---------------------------------------------------------------- logs
 
   /**
    * Appends to a log. Each entry stores the hash of the one before it and its own hash over
-   * its contents, so changing or removing any entry breaks every hash after it.
+   * its contents, so changing or removing any entry breaks every hash after it. Reading the
+   * head and writing the entry are one transaction, so two processes cannot both write seq n.
    */
   log(name: LogName, input: LogInput): LogEntry {
-    const entries = this.state.logs[name];
-    const last = entries.at(-1);
-    const base = {
-      seq: (last?.seq ?? 0) + 1,
-      at: this.now().toISOString(),
-      ...definedOnly(input),
-      prevHash: last?.hash ?? GENESIS,
-    };
-    const entry: LogEntry = { ...base, hash: entryHash(base) };
-    entries.push(entry);
-    if (entries.length > LOG_CAP) entries.splice(0, entries.length - LOG_CAP);
-    this.persist();
-    return entry;
+    return transaction(this.db, () => {
+      const last = this.head(name);
+      const base = {
+        seq: last.seq + 1,
+        at: this.now().toISOString(),
+        ...definedOnly(input),
+        prevHash: last.hash,
+      };
+      const entry: LogEntry = { ...base, hash: entryHash(base) };
+      this.insertLogEntry(name, entry);
+      this.db
+        .prepare("DELETE FROM log_entries WHERE log = ? AND seq <= ?")
+        .run(name, entry.seq - LOG_CAP);
+      return entry;
+    });
   }
 
   /** Newest first, optionally only one partner's. The cursor is the seq of the last item. */
@@ -395,20 +523,30 @@ export class PortalStore {
     name: LogName,
     options: { partner?: string | undefined; limit: number; cursor?: number | undefined },
   ): { data: LogEntry[]; nextCursor?: number } {
-    const matching = this.state.logs[name]
-      .filter((e) => !options.partner || e.partner === options.partner)
-      .filter((e) => options.cursor === undefined || e.seq < options.cursor)
-      .reverse();
-    const data = matching.slice(0, options.limit);
-    return {
-      data,
-      ...(matching.length > options.limit ? { nextCursor: data.at(-1)!.seq } : {}),
-    };
+    const where = ["log = ?"];
+    const params: (string | number)[] = [name];
+    if (options.partner) {
+      where.push("partner = ?");
+      params.push(options.partner);
+    }
+    if (options.cursor !== undefined) {
+      where.push("seq < ?");
+      params.push(options.cursor);
+    }
+    const rows = records<LogEntry>(
+      this.db
+        .prepare(
+          `SELECT data FROM log_entries WHERE ${where.join(" AND ")} ORDER BY seq DESC LIMIT ?`,
+        )
+        .all(...params, options.limit + 1),
+    );
+    const data = rows.slice(0, options.limit);
+    return { data, ...(rows.length > options.limit ? { nextCursor: data.at(-1)!.seq } : {}) };
   }
 
   /** Recomputes the chain. The oldest kept entry is trusted as the start (older ones are capped). */
   verifyLog(name: LogName): { intact: boolean; entries: number; firstBrokenSeq?: number } {
-    const entries = this.state.logs[name];
+    const entries = this.rawLog(name);
     let prev = entries[0]?.prevHash ?? GENESIS;
     for (const entry of entries) {
       const { hash, ...rest } = entry;
@@ -420,20 +558,63 @@ export class PortalStore {
     return { intact: true, entries: entries.length };
   }
 
-  /** Tests only: lets a test tamper with an entry to prove the check catches it. */
+  /** Every entry still kept, oldest first (verification and tests). */
   rawLog(name: LogName): LogEntry[] {
-    return this.state.logs[name];
+    return records(
+      this.db.prepare("SELECT data FROM log_entries WHERE log = ? ORDER BY seq").all(name),
+    );
   }
 
-  // ---------------------------------------------------------------- persistence
+  /**
+   * Tests only: direct SQL on the database, to play someone who edits the file behind the
+   * API's back (a changed log entry, a deleted one, a forged anchor) and prove the checks
+   * catch it.
+   */
+  unsafeSqlForTests(sql: string, ...params: (string | number | null)[]): void {
+    this.db.prepare(sql).run(...params);
+  }
 
-  private persist(): void {
-    if (!this.filePath) return;
-    mkdirSync(dirname(this.filePath), { recursive: true });
-    const tmp = `${this.filePath}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.state, null, 2), { mode: 0o600 });
-    renameSync(tmp, this.filePath);
-    chmodSync(this.filePath, 0o600);
+  // ---------------------------------------------------------------- internals
+
+  private insertLogEntry(name: LogName, entry: LogEntry): void {
+    this.db
+      .prepare("INSERT INTO log_entries (log, seq, partner, data) VALUES (?, ?, ?, ?)")
+      .run(name, entry.seq, col(entry.partner), JSON.stringify(entry));
+  }
+
+  /**
+   * Moves the old portal.json into this database if the database is still empty, and renames
+   * the file to `.imported` so it is kept but never read again. Users, their sealed
+   * authenticator secrets, keys, deliveries and both logs (hashes unchanged) come across.
+   */
+  private importLegacy(path: string): void {
+    if (!existsSync(path)) return;
+    const empty =
+      !this.db.prepare("SELECT 1 FROM users LIMIT 1").get() &&
+      !this.db.prepare("SELECT 1 FROM log_entries LIMIT 1").get();
+    if (!empty) return;
+    let legacy: LegacyState;
+    try {
+      legacy = JSON.parse(readFileSync(path, "utf8")) as LegacyState;
+    } catch {
+      return;
+    }
+    transaction(this.db, () => {
+      for (const user of Object.values(legacy.users ?? {})) this.saveUser(user);
+      for (const session of Object.values(legacy.sessions ?? {})) this.saveSession(session);
+      for (const key of Object.values(legacy.apiKeys ?? {})) this.saveApiKey(key);
+      for (const [slug, settings] of Object.entries(legacy.partnerSettings ?? {})) {
+        this.updatePartnerSettings(slug, settings);
+      }
+      for (const delivery of legacy.deliveries ?? []) this.saveDelivery(delivery);
+      for (const request of Object.values(legacy.freezeRequests ?? {}))
+        this.saveFreezeRequest(request);
+      for (const anchor of legacy.anchors ?? []) this.saveAnchor(anchor);
+      for (const name of ["audit", "security"] as const) {
+        for (const entry of legacy.logs?.[name] ?? []) this.insertLogEntry(name, entry);
+      }
+    });
+    renameSync(path, `${path}.imported`);
   }
 }
 
