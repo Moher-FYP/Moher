@@ -44,7 +44,7 @@ Options go after the command: `--rounds 3`, `--profile full|light`, `--headless`
 
 The light profile cost the relayer about 0.22 test POL a round on 23 Nov 2026, at Amoy's gas
 price of 57 gwei (about half that at 30 gwei). Five rounds need about 1.1 POL. Before each round
-the run checks the relayer has what the last round cost plus a quarter (at least 0.12 POL), and
+the run checks the relayer has what the last round cost plus a quarter (at least 0.28 POL, 0.5 on the full profile), and
 stops cleanly if not. The freezes in round 1 cost the compliance key about 0.01 POL. Top up from the Polygon faucet, or from the deployer.
 
 ## Before the first run

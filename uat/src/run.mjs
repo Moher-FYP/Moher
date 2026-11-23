@@ -1750,7 +1750,10 @@ async function gasCheck({ final = false } = {}) {
     lastRoundCost: POL(lastRoundCost),
   });
   if (final) return true; // the end-of-run reading is for the record, not a check
-  const floor = viem.parseEther(FULL ? "0.25" : "0.12");
+  // Before the first round there is no last-round cost to go by, so the floor is what a round
+  // was measured to cost on Amoy (light: 0.22 POL at 57 gwei, 23 Nov 2026) plus a margin.
+  // A lower floor would let a run start a round it cannot finish.
+  const floor = viem.parseEther(FULL ? "0.5" : "0.28");
   const margin = (lastRoundCost * 5n) / 4n;
   const need = margin > floor ? margin : floor;
   await step(
