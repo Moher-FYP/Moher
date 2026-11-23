@@ -1,0 +1,19 @@
+{
+  "name": "@mohar/uat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Acceptance run: every MOHAR feature as real users in a real browser, every action logged",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "local": "node --disable-warning=ExperimentalWarning src/run.mjs --target local",
+    "amoy": "node --disable-warning=ExperimentalWarning src/run.mjs --target amoy"
+  },
+  "dependencies": {
+    "@mohar/sdk": "workspace:*",
+    "playwright": "1.63.0",
+    "viem": "^2.57.1"
+  }
+}
