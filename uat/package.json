@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@mohar/sdk": "workspace:*",
-    "playwright": "1.63.0",
-    "viem": "^2.57.1"
+    "playwright": "1.65.1",
+    "viem": "^2.58.2"
   }
 }

@@ -24,8 +24,8 @@
     "uat:amoy": "pnpm --filter @mohar/uat amoy --"
   },
   "devDependencies": {
-    "@redocly/cli": "^2.57.0",
-    "prettier": "^3.9.9",
+    "@redocly/cli": "^2.82.0",
+    "prettier": "^3.10.1",
     "typescript": "^5.9.3"
   }
 }
