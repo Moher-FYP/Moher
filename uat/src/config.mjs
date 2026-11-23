@@ -102,10 +102,9 @@ export const config = {
       persona: { id: "aliya", name: "Aliya Siddiqui" },
     },
   },
+  // --out puts the run's folder somewhere else, e.g. /mnt/c/Users/<you>/Downloads/uat from WSL.
   out: resolve(
-    REPO,
-    "uat",
-    "out",
+    typeof arg("out") === "string" ? arg("out") : join(REPO, "uat", "out"),
     `${target}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}`,
   ),
 };

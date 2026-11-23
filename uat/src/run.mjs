@@ -1680,17 +1680,21 @@ async function invariants(sessions) {
         const mine = wallets.filter((w) => w.partnerSlug === APPS[app].slug);
         let custody = 0n;
         for (const w of mine) custody += await onchain.balanceOf(w.address);
+        // The tile counts the period the API reports (Pakistan calendar days), so the records
+        // are counted over the same window: from the start of period.from in PKT (UTC+5).
+        const since = Date.parse(`${r.body.period?.from}T00:00:00Z`) - 5 * 3600 * 1000;
         const trades = txns.filter(
           (t) =>
             t.partnerSlug === APPS[app].slug &&
             t.status === "confirmed" &&
-            (t.type === "mint" || t.type === "burn"),
+            (t.type === "mint" || t.type === "burn") &&
+            Date.parse(t.createdAt) >= since,
         ).length;
         const custodyOk = gramsUnits(r.body.tiles.custodyGrams.value) === custody;
         const tradesOk = r.body.tiles.trades.value === trades;
         return {
           pass: r.status === 200 && custodyOk && tradesOk,
-          actual: `custody ${r.body.tiles?.custodyGrams?.value} g vs chain ${custody}; trades ${r.body.tiles?.trades?.value} vs ${trades}`,
+          actual: `custody ${r.body.tiles?.custodyGrams?.value} g vs chain ${viem.formatUnits(custody, 8)} g; trades in 7 days ${r.body.tiles?.trades?.value} vs ${trades}`,
         };
       },
     );
@@ -1728,16 +1732,27 @@ async function invariants(sessions) {
 
 const POL = (wei) => Number(viem.formatEther(wei)).toFixed(4);
 /** Logs the relayer's and compliance key's test POL; on Amoy, stops before a round it can't pay for. */
-async function gasCheck() {
+// What the last round cost the relayer. Amoy's gas price moves (30 gwei on 14 Nov, 57 on
+// 23 Nov), so the next round needs what the last one cost plus a margin, not a fixed guess.
+let lastBalance;
+let lastRoundCost = 0n;
+
+async function gasCheck({ final = false } = {}) {
   const relayer = await onchain.balance(deployment.relayer);
+  if (lastBalance !== undefined && lastBalance > relayer) lastRoundCost = lastBalance - relayer;
+  lastBalance = relayer;
   const compliance = config.complianceAddress
     ? await onchain.balance(config.complianceAddress)
     : undefined;
   note("gas", {
     relayer: POL(relayer),
     compliance: compliance !== undefined ? POL(compliance) : null,
+    lastRoundCost: POL(lastRoundCost),
   });
-  const need = viem.parseEther(FULL ? "0.25" : "0.12");
+  if (final) return true; // the end-of-run reading is for the record, not a check
+  const floor = viem.parseEther(FULL ? "0.25" : "0.12");
+  const margin = (lastRoundCost * 5n) / 4n;
+  const need = margin > floor ? margin : floor;
   await step(
     {
       app: "Whole system",
@@ -1822,7 +1837,7 @@ try {
     `!! Could not disable the run's operator ${operator.email}; disable it with portal:user.`,
   );
 }
-await gasCheck();
+await gasCheck({ final: true });
 await browser.close();
 await exportRun(entities, { finished });
 console.log(`\nDone: ${finished} round(s). Everything is in ${UAT}`);

@@ -236,7 +236,13 @@ export async function sendGold(formData: FormData): Promise<void> {
 
   let transactionId: string;
   try {
-    const toWalletId = await walletIdFor(recipient as Customer);
+    // The recipient's saved wallet id may be stale (MOHAR's records were reset, or the bank's
+    // records came from another environment). withWallet checks it with MOHAR and registers
+    // the recipient again if MOHAR does not know it, as it already does for the sender.
+    const toWalletId = await withWallet(recipient as Customer, async (walletId) => {
+      await getMohar().getBalance(walletId);
+      return walletId;
+    });
     const txn = await withWallet(customer, (fromWalletId) =>
       getMohar().transfer({ fromWalletId, toWalletId, grams: amount }),
     );

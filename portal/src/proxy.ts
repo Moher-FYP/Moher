@@ -12,7 +12,10 @@ export function proxy(request: NextRequest) {
   const policy = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
-    `style-src 'self' 'nonce-${nonce}'`,
+    // `next dev` injects <style> tags without the nonce (its error overlay and hot reload), so
+    // in development only, styles are allowed inline. A browser ignores 'unsafe-inline' when a
+    // nonce is listed, so the nonce is left out there. Production keeps the strict rule.
+    dev ? "style-src 'self' 'unsafe-inline'" : `style-src 'self' 'nonce-${nonce}'`,
     "style-src-attr 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",

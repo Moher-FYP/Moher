@@ -38,12 +38,14 @@ API a person would. It complements `pnpm test` and `pnpm test:e2e`.
 | `pnpm uat`      | the local Anvil stack (`pnpm chain`, deploy, API, apps, portal)    | full: everything, every round                                                 | hidden                            |
 | `pnpm uat:amoy` | the Amoy deployment on the laptop that holds the `.env.amoy` files | light: every feature each round, fewer repeat trades, freezes in round 1 only | visible, slowed so you can follow |
 
-Options go after the command: `--rounds 3`, `--profile full|light`, `--headless`, `--slow 300`
+Options go after the command: `--rounds 3`, `--profile full|light`, `--headless`, `--slow 300`,
+`--out <folder>` (from WSL, `--out /mnt/c/Users/<you>/Downloads/uat` puts the results where Windows can see them)
 (milliseconds between browser actions).
 
-The light profile costs about 0.1 test POL a round from the relayer. Before each round the run
-checks the relayer has at least 0.12 POL, and stops if not. The freezes in round 1 cost the
-compliance key about 0.006 POL. Top up from the Polygon faucet, or from the deployer.
+The light profile cost the relayer about 0.22 test POL a round on 23 Nov 2026, at Amoy's gas
+price of 57 gwei (about half that at 30 gwei). Five rounds need about 1.1 POL. Before each round
+the run checks the relayer has what the last round cost plus a quarter (at least 0.12 POL), and
+stops cleanly if not. The freezes in round 1 cost the compliance key about 0.01 POL. Top up from the Polygon faucet, or from the deployer.
 
 ## Before the first run
 
