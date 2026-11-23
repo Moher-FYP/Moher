@@ -3,6 +3,7 @@ packages:
   - sdk
   - demo-bank
   - portal
+  - uat
 
 # Native build scripts pnpm is allowed to skip (Next.js image optimisation / eslint resolver).
 ignoredBuiltDependencies:
