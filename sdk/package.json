@@ -27,7 +27,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/node": "^20.19.43",
+    "@types/node": "^26.6.6",
     "openapi-typescript": "^7.13.0",
     "prettier": "^3.9.9",
     "typescript": "^5.9.3",
